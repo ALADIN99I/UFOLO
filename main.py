@@ -182,8 +182,29 @@ class LiveUFOTradingSystem:
 
     def cleanup(self):
         """Clean up resources."""
+        self.generate_summary_report()
         self.log_event("Cleaning up resources and shutting down.")
         self.mt5_collector.disconnect()
+
+    def generate_summary_report(self):
+        """Generate a summary report of the trading session."""
+        self.log_event("="*50)
+        self.log_event("Trading Session Summary Report")
+        self.log_event("="*50)
+
+        # Portfolio Performance
+        account_info = self.portfolio_manager.get_account_info()
+        if account_info:
+            self.log_event(f"Ending Balance: {account_info['balance']}")
+            self.log_event(f"Ending Equity: {account_info['equity']}")
+            self.log_event(f"Profit/Loss: {account_info['profit']}")
+
+        # Trades Executed
+        closed_trades = self.portfolio_manager.get_closed_trades_history()
+        self.log_event(f"\nTotal Trades Executed: {len(closed_trades)}")
+        for trade in closed_trades:
+            self.log_event(f"  - Symbol: {trade['symbol']}, Volume: {trade['volume']}, P/L: {trade['profit']}")
+        self.log_event("="*50)
 
 def main():
     """Main function to run the live trading system"""
