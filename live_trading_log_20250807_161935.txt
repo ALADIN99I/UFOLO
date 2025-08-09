@@ -1,0 +1,286 @@
+UFO FOREX AGENT v3 - LIVE TRADING LOG
+============================================================
+Session: 2025-08-07 16:19:35
+Total Cycles: 6
+
+[14:01:09] 🚀 Starting LIVE UFO Trading - Full Day Simulator Clone Mode
+[14:01:09] 📅 Trading Hours: 02:00 GMT to 20:00 GMT
+[14:01:09] ⏰ Cycle Frequency: Every 30 minutes
+[14:01:09] 📊 Continuous Monitoring: Position updates every 5 minutes
+[14:01:09] ✅ Retrieved 87 economic events
+[14:01:09] 
+============================================================
+[14:01:09] CYCLE 1 - 14:01 GMT
+[14:01:09] ============================================================
+[14:01:09] ✅ Retrieved 87 economic events
+[14:01:09] 📊 PHASE 1: Data Collection
+[14:01:09] ✅ Collected data for 27 symbols
+[14:01:09] 🛸 PHASE 2: UFO Analysis
+[14:01:10] ✅ Enhanced UFO analysis completed for 5 timeframes
+[14:01:10] 📅 PHASE 3: Economic Calendar
+[14:01:10] ✅ Retrieved 87 economic events
+[14:01:10] 🔍 PHASE 4: Market Research
+[14:01:34] ✅ Market research completed
+[14:01:34] 💼 PHASE 5: UFO Portfolio Management
+[14:01:34] ✅ Portfolio assessed: 0 open positions
+[14:01:34] 🎯 PHASE 6: Trading Decisions
+[14:01:46] ✅ Trading decisions generated
+[14:01:46] ⚖️ PHASE 7: Risk Assessment
+[14:02:03] ✅ Risk assessment: OK
+[14:02:03] 💰 PHASE 8: Fund Manager Authorization
+[14:02:09] ✅ Fund Manager decision: APPROVED
+[14:02:09] ⚡ PHASE 9: Trade Execution
+[14:02:09] ✅ UFO Engine approved: Building diversification: 0/2 minimum positions
+[14:02:10] 🔹 Trade executed: AUDUSD-ECN BUY 0.1 lots @ 0.65258
+[14:02:10] 🔹 Trade executed: NZDUSD-ECN BUY 0.1 lots @ 0.59558
+[14:02:10] 🔹 Trade executed: EURJPY-ECN BUY 0.1 lots @ 171.63800
+[14:02:11] 🔹 Trade executed: GBPJPY-ECN SELL 0.1 lots @ 197.70500
+[14:02:11] 📋 PHASE 10: Cycle Summary
+[14:02:11] 📊 Cycle 1 Summary (14:01 GMT):
+[14:02:11]    Trades Executed: 4
+[14:02:11]    Total Trades Today: 4
+[14:02:11]    Open Positions: 4/12
+[14:02:11]    Portfolio Value: $614.09 (Total P&L: $-2.01)
+[14:07:11] ✅ Retrieved 87 economic events
+[14:07:11] [14:07:11] Inter-cycle monitoring 1/5
+[14:12:11] ✅ Retrieved 87 economic events
+[14:12:11] [14:12:11] Inter-cycle monitoring 2/5
+[14:17:11] ✅ Retrieved 87 economic events
+[14:17:11] [14:17:11] Inter-cycle monitoring 3/5
+[14:22:11] ✅ Retrieved 87 economic events
+[14:22:11] [14:22:11] Inter-cycle monitoring 4/5
+[14:27:11] ✅ Retrieved 87 economic events
+[14:27:11] [14:27:11] Inter-cycle monitoring 5/5
+[14:27:11] ✅ Retrieved 87 economic events
+[14:27:11] 
+============================================================
+[14:27:11] CYCLE 2 - 14:27 GMT
+[14:27:11] ============================================================
+[14:27:11] ✅ Retrieved 87 economic events
+[14:27:11] 📊 PHASE 1: Data Collection
+[14:27:11] ✅ Collected data for 27 symbols
+[14:27:11] 🛸 PHASE 2: UFO Analysis
+[14:27:12] ✅ Enhanced UFO analysis completed for 5 timeframes
+[14:27:12] 📅 PHASE 3: Economic Calendar
+[14:27:12] ✅ Retrieved 87 economic events
+[14:27:12] 🔍 PHASE 4: Market Research
+[14:27:33] ✅ Market research completed
+[14:27:33] 💼 PHASE 5: UFO Portfolio Management
+[14:27:33] ✅ Portfolio assessed: 4 open positions
+[14:27:33] 🎯 PHASE 6: Trading Decisions
+[14:27:44] ✅ Trading decisions generated
+[14:27:44] ⚖️ PHASE 7: Risk Assessment
+[14:27:53] ✅ Risk assessment: OK
+[14:27:53] 💰 PHASE 8: Fund Manager Authorization
+[14:28:01] ✅ Fund Manager decision: APPROVED
+[14:28:01] ⚡ PHASE 9: Trade Execution
+[14:28:01] ✅ UFO Engine approved: Additional diversification possible: 4/12 max positions
+[14:28:01] 🔹 Trade closed by LLM: 46850329
+[14:28:01] ⚠️ Direction inverted due to pair correction: BUY
+[14:28:01] 🔹 Trade executed: USDJPY-ECN BUY 0.1 lots @ 147.20700
+[14:28:01] ⚠️ Direction inverted due to pair correction: BUY
+[14:28:02] 🔹 Trade executed: USDCHF-ECN BUY 0.1 lots @ 0.80812
+[14:28:02] 📋 PHASE 10: Cycle Summary
+[14:28:02] 📊 Cycle 2 Summary (14:27 GMT):
+[14:28:02]    Trades Executed: 3
+[14:28:02]    Total Trades Today: 6
+[14:28:02]    Open Positions: 5/12
+[14:28:02]    Portfolio Value: $611.55 (Total P&L: $-4.55)
+[14:33:02] ✅ Retrieved 87 economic events
+[14:33:02] [14:33:02] Inter-cycle monitoring 1/5
+[14:38:02] ✅ Retrieved 87 economic events
+[14:38:02] [14:38:02] Inter-cycle monitoring 2/5
+[14:43:02] ✅ Retrieved 87 economic events
+[14:43:02] [14:43:02] Inter-cycle monitoring 3/5
+[14:48:02] ✅ Retrieved 87 economic events
+[14:48:02] [14:48:02] Inter-cycle monitoring 4/5
+[14:53:02] ✅ Retrieved 87 economic events
+[14:53:02] [14:53:02] Inter-cycle monitoring 5/5
+[14:53:02] ✅ Retrieved 87 economic events
+[14:53:02] 
+============================================================
+[14:53:02] CYCLE 3 - 14:53 GMT
+[14:53:02] ============================================================
+[14:53:02] ✅ Retrieved 87 economic events
+[14:53:02] 📊 PHASE 1: Data Collection
+[14:53:02] ✅ Collected data for 27 symbols
+[14:53:02] 🛸 PHASE 2: UFO Analysis
+[14:53:02] ✅ Enhanced UFO analysis completed for 5 timeframes
+[14:53:02] 📅 PHASE 3: Economic Calendar
+[14:53:02] ✅ Retrieved 87 economic events
+[14:53:02] 🔍 PHASE 4: Market Research
+[14:53:25] ✅ Market research completed
+[14:53:25] 💼 PHASE 5: UFO Portfolio Management
+[14:53:25] ✅ Portfolio assessed: 5 open positions
+[14:53:25] 🎯 PHASE 6: Trading Decisions
+[14:53:40] ✅ Trading decisions generated
+[14:53:40] ⚖️ PHASE 7: Risk Assessment
+[14:53:51] ✅ Risk assessment: OK
+[14:53:51] 💰 PHASE 8: Fund Manager Authorization
+[14:53:59] ✅ Fund Manager decision: APPROVED
+[14:53:59] ⚡ PHASE 9: Trade Execution
+[14:53:59] ✅ UFO Engine approved: Additional diversification possible: 5/12 max positions
+[14:53:59] 🔹 Trade closed by LLM: 46850327
+[14:54:00] 🔹 Trade closed by LLM: 46850328
+[14:54:00] 🔹 Trade executed: AUDJPY-ECN BUY 0.1 lots @ 95.97940
+[14:54:00] 🔹 Trade executed: CHFJPY-ECN BUY 0.1 lots @ 182.39700
+[14:54:01] 🔹 Trade executed: NZDJPY-ECN BUY 0.1 lots @ 87.64823
+[14:54:01] 📋 PHASE 10: Cycle Summary
+[14:54:01] 📊 Cycle 3 Summary (14:53 GMT):
+[14:54:01]    Trades Executed: 5
+[14:54:01]    Total Trades Today: 9
+[14:54:01]    Open Positions: 6/12
+[14:54:01]    Portfolio Value: $585.59 (Total P&L: $-30.51)
+[14:59:01] ✅ Retrieved 87 economic events
+[14:59:01] [14:59:01] Inter-cycle monitoring 1/5
+[14:59:01] ⚡ Rapid portfolio change: 4.68% in 5 min
+[15:04:01] ✅ Retrieved 87 economic events
+[15:04:01] [15:04:01] Inter-cycle monitoring 2/5
+[15:09:01] ✅ Retrieved 87 economic events
+[15:09:01] [15:09:01] Inter-cycle monitoring 3/5
+[15:14:01] ✅ Retrieved 87 economic events
+[15:14:01] [15:14:01] Inter-cycle monitoring 4/5
+[15:19:01] ✅ Retrieved 87 economic events
+[15:19:01] [15:19:01] Inter-cycle monitoring 5/5
+[15:19:01] ✅ Retrieved 87 economic events
+[15:19:01] 
+============================================================
+[15:19:01] CYCLE 4 - 15:19 GMT
+[15:19:01] ============================================================
+[15:19:01] ✅ Retrieved 87 economic events
+[15:19:01] 📊 PHASE 1: Data Collection
+[15:19:01] ✅ Collected data for 27 symbols
+[15:19:01] 🛸 PHASE 2: UFO Analysis
+[15:19:02] ✅ Enhanced UFO analysis completed for 5 timeframes
+[15:19:02] 📅 PHASE 3: Economic Calendar
+[15:19:02] ✅ Retrieved 87 economic events
+[15:19:02] 🔍 PHASE 4: Market Research
+[15:19:26] ✅ Market research completed
+[15:19:26] 💼 PHASE 5: UFO Portfolio Management
+[15:19:26] ✅ Portfolio assessed: 6 open positions
+[15:19:26] 🎯 PHASE 6: Trading Decisions
+[15:19:37] ✅ Trading decisions generated
+[15:19:37] ⚖️ PHASE 7: Risk Assessment
+[15:19:53] ✅ Risk assessment: OK
+[15:19:53] 💰 PHASE 8: Fund Manager Authorization
+[15:20:06] ✅ Fund Manager decision: APPROVED
+[15:20:06] ⚡ PHASE 9: Trade Execution
+[15:20:06] ✅ UFO Engine approved: Additional diversification possible: 6/12 max positions
+[15:20:06] 🔹 Trade closed by LLM: 46859227
+[15:20:06] 🔹 Trade closed by LLM: 46876614
+[15:20:06] 🔹 Trade executed: GBPUSD-ECN BUY 0.2 lots @ 1.34093
+[15:20:07] 🔹 Trade executed: NZDCHF-ECN BUY 0.2 lots @ 0.48031
+[15:20:07] 📋 PHASE 10: Cycle Summary
+[15:20:07] 📊 Cycle 4 Summary (15:19 GMT):
+[15:20:07]    Trades Executed: 4
+[15:20:07]    Total Trades Today: 11
+[15:20:07]    Open Positions: 6/12
+[15:20:07]    Portfolio Value: $595.33 (Total P&L: $-20.77)
+[15:25:07] ✅ Retrieved 87 economic events
+[15:25:07] [15:25:07] Inter-cycle monitoring 1/5
+[15:30:07] ✅ Retrieved 87 economic events
+[15:30:07] [15:30:07] Inter-cycle monitoring 2/5
+[15:35:07] ✅ Retrieved 87 economic events
+[15:35:07] [15:35:07] Inter-cycle monitoring 3/5
+[15:40:07] ✅ Retrieved 87 economic events
+[15:40:07] [15:40:07] Inter-cycle monitoring 4/5
+[15:45:07] ✅ Retrieved 87 economic events
+[15:45:07] [15:45:07] Inter-cycle monitoring 5/5
+[15:45:07] ✅ Retrieved 87 economic events
+[15:45:07] 
+============================================================
+[15:45:07] CYCLE 5 - 15:45 GMT
+[15:45:07] ============================================================
+[15:45:07] ✅ Retrieved 87 economic events
+[15:45:07] 📊 PHASE 1: Data Collection
+[15:45:08] ✅ Collected data for 27 symbols
+[15:45:08] 🛸 PHASE 2: UFO Analysis
+[15:45:08] ✅ Enhanced UFO analysis completed for 5 timeframes
+[15:45:08] 📅 PHASE 3: Economic Calendar
+[15:45:08] ✅ Retrieved 87 economic events
+[15:45:08] 🔍 PHASE 4: Market Research
+[15:45:29] ✅ Market research completed
+[15:45:29] 💼 PHASE 5: UFO Portfolio Management
+[15:45:29] ✅ Portfolio assessed: 6 open positions
+[15:45:29] 🎯 PHASE 6: Trading Decisions
+[15:45:44] ✅ Trading decisions generated
+[15:45:44] ⚖️ PHASE 7: Risk Assessment
+[15:45:55] ✅ Risk assessment: OK
+[15:45:55] 💰 PHASE 8: Fund Manager Authorization
+[15:46:03] ✅ Fund Manager decision: APPROVED
+[15:46:03] ⚡ PHASE 9: Trade Execution
+[15:46:03] ✅ UFO Engine approved: Additional diversification possible: 6/12 max positions
+[15:46:03] 🔹 Trade closed by LLM: 46850331
+[15:46:03] 🔹 Trade closed by LLM: 46859225
+[15:46:03] ⚠️ Direction inverted due to pair correction: SELL
+[15:46:03] 🔹 Trade executed: EURGBP-ECN SELL 0.2 lots @ 0.86699
+[15:46:03] ⚠️ Direction inverted due to pair correction: SELL
+[15:46:04] 🔹 Trade executed: EURAUD-ECN SELL 0.2 lots @ 1.78778
+[15:46:04] 🔹 Trade executed: GBPCHF-ECN BUY 0.2 lots @ 1.08332
+[15:46:05] 🔹 Trade executed: AUDCHF-ECN BUY 0.2 lots @ 0.52537
+[15:46:05] 📋 PHASE 10: Cycle Summary
+[15:46:05] 📊 Cycle 5 Summary (15:45 GMT):
+[15:46:05]    Trades Executed: 6
+[15:46:05]    Total Trades Today: 15
+[15:46:05]    Open Positions: 8/12
+[15:46:05]    Portfolio Value: $566.38 (Total P&L: $-49.72)
+[15:51:05] ✅ Retrieved 87 economic events
+[15:51:05] [15:51:05] Inter-cycle monitoring 1/5
+[15:51:05] 🚨 PORTFOLIO STOP BREACHED DURING MONITORING: Portfolio stop breached: -9.89% (limit: -7.0%)
+[15:51:05] 🚨 Emergency closing ALL positions immediately!
+[15:56:06] ✅ Retrieved 87 economic events
+[15:56:06] [15:56:06] Inter-cycle monitoring 2/5
+[16:01:06] ✅ Retrieved 87 economic events
+[16:01:06] [16:01:06] Inter-cycle monitoring 3/5
+[16:06:06] ✅ Retrieved 87 economic events
+[16:06:06] [16:06:06] Inter-cycle monitoring 4/5
+[16:11:06] ✅ Retrieved 87 economic events
+[16:11:06] [16:11:06] Inter-cycle monitoring 5/5
+[16:11:06] ✅ Retrieved 87 economic events
+[16:11:06] 
+============================================================
+[16:11:06] CYCLE 6 - 16:11 GMT
+[16:11:06] ============================================================
+[16:11:06] ✅ Retrieved 87 economic events
+[16:11:06] 📊 PHASE 1: Data Collection
+[16:11:06] ✅ Collected data for 27 symbols
+[16:11:06] 🛸 PHASE 2: UFO Analysis
+[16:11:06] ✅ Enhanced UFO analysis completed for 5 timeframes
+[16:11:06] 📅 PHASE 3: Economic Calendar
+[16:11:06] ✅ Retrieved 87 economic events
+[16:11:06] 🔍 PHASE 4: Market Research
+[16:11:31] ✅ Market research completed
+[16:11:31] 💼 PHASE 5: UFO Portfolio Management
+[16:11:31] 🚨 UFO PORTFOLIO STOP TRIGGERED: Portfolio stop breached: -10.60% (limit: -7.0%)
+[16:11:31] 🚨 Closing ALL positions - no individual stops needed!
+[16:11:31] 🚨 All positions closed. UFO Portfolio Stop engaged.
+[16:16:31] ✅ Retrieved 87 economic events
+[16:16:31] [16:16:31] Inter-cycle monitoring 1/5
+[16:19:35] 
+Trading interrupted by user. Generating final summary...
+[16:19:35] 
+================================================================================
+[16:19:35] 🎯 LIVE UFO TRADING SESSION COMPLETED
+[16:19:35] ================================================================================
+[16:19:35] 📅 Session Date: Thursday, August 07, 2025
+[16:19:35] ⏰ Total Cycles: 6
+[16:19:35] 💼 Total Trades Executed: 15
+[16:19:35] 💰 Final Portfolio Value: $550.79
+[16:19:35] 💰 Total P&L: $-65.31
+[16:19:35] 
+📈 EXECUTED TRADES SUMMARY:
+[16:19:35]   1. AUDUSD-ECN BUY 0.1 @ 0.65258 (UFO Cycle 1)
+[16:19:35]   2. NZDUSD-ECN BUY 0.1 @ 0.59558 (UFO Cycle 1)
+[16:19:35]   3. EURJPY-ECN BUY 0.1 @ 171.63800 (UFO Cycle 1)
+[16:19:35]   4. GBPJPY-ECN SELL 0.1 @ 197.70500 (UFO Cycle 1)
+[16:19:35]   5. USDJPY-ECN BUY 0.1 @ 147.20700 (UFO Cycle 2)
+[16:19:35]   6. USDCHF-ECN BUY 0.1 @ 0.80812 (UFO Cycle 2)
+[16:19:35]   7. AUDJPY-ECN BUY 0.1 @ 95.97940 (UFO Cycle 3)
+[16:19:35]   8. CHFJPY-ECN BUY 0.1 @ 182.39700 (UFO Cycle 3)
+[16:19:35]   9. NZDJPY-ECN BUY 0.1 @ 87.64823 (UFO Cycle 3)
+[16:19:35]   10. GBPUSD-ECN BUY 0.2 @ 1.34093 (UFO Cycle 4)
+[16:19:35]   11. NZDCHF-ECN BUY 0.2 @ 0.48031 (UFO Cycle 4)
+[16:19:35]   12. EURGBP-ECN SELL 0.2 @ 0.86699 (UFO Cycle 5)
+[16:19:35]   13. EURAUD-ECN SELL 0.2 @ 1.78778 (UFO Cycle 5)
+[16:19:35]   14. GBPCHF-ECN BUY 0.2 @ 1.08332 (UFO Cycle 5)
+[16:19:35]   15. AUDCHF-ECN BUY 0.2 @ 0.52537 (UFO Cycle 5)

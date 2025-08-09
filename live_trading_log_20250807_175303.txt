@@ -1,0 +1,138 @@
+UFO FOREX AGENT v3 - LIVE TRADING LOG
+============================================================
+Session: 2025-08-07 17:53:03
+Total Cycles: 3
+
+[16:55:40] 🚀 Starting LIVE UFO Trading - Full Day Simulator Clone Mode
+[16:55:40] 📅 Trading Hours: 02:00 GMT to 20:00 GMT
+[16:55:40] ⏰ Cycle Frequency: Every 30 minutes
+[16:55:40] 📊 Continuous Monitoring: Position updates every 5 minutes
+[16:55:40] ✅ Retrieved 87 economic events
+[16:55:40] 
+============================================================
+[16:55:40] CYCLE 1 - 16:55 GMT
+[16:55:40] ============================================================
+[16:55:40] ✅ Retrieved 87 economic events
+[16:55:40] 📊 PHASE 1: Data Collection
+[16:55:42] ✅ Collected data for 27 symbols
+[16:55:42] 🛸 PHASE 2: UFO Analysis
+[16:55:43] ✅ Enhanced UFO analysis completed for 5 timeframes
+[16:55:43] 📅 PHASE 3: Economic Calendar
+[16:55:43] ✅ Retrieved 87 economic events
+[16:55:43] 🔍 PHASE 4: Market Research
+[16:56:07] ✅ Market research completed
+[16:56:07] 💼 PHASE 5: UFO Portfolio Management
+[16:56:07] ✅ Portfolio assessed: 0 open positions
+[16:56:07] 🎯 PHASE 6: Trading Decisions
+[16:56:32] ✅ Trading decisions generated
+[16:56:32] ⚖️ PHASE 7: Risk Assessment
+[16:56:49] ✅ Risk assessment: OK
+[16:56:49] 💰 PHASE 8: Fund Manager Authorization
+[16:56:56] ✅ Fund Manager decision: APPROVED
+[16:56:56] ⚡ PHASE 9: Trade Execution
+[16:56:56] ✅ UFO Engine approved: Building diversification: 0/2 minimum positions
+[16:56:56] 🔹 Trade executed: GBPUSD-ECN BUY 0.4 lots @ 1.34313
+[16:56:57] 🔹 Trade executed: NZDJPY-ECN BUY 0.4 lots @ 87.59924
+[16:56:57] 🔹 Trade executed: EURUSD-ECN SELL 0.4 lots @ 1.16387
+[16:56:57] 🔹 Trade executed: AUDCHF-ECN SELL 0.4 lots @ 0.52499
+[16:56:57] 📋 PHASE 10: Cycle Summary
+[16:56:57] 📊 Cycle 1 Summary (16:55 GMT):
+[16:56:57]    Trades Executed: 4
+[16:56:57]    Total Trades Today: 4
+[16:56:57]    Open Positions: 4/12
+[16:56:57]    Portfolio Value: $539.74 (Total P&L: $-11.05)
+[17:01:57] ✅ Retrieved 87 economic events
+[17:01:57] [17:01:57] Inter-cycle monitoring 1/5
+[17:06:57] ✅ Retrieved 87 economic events
+[17:06:57] [17:06:57] Inter-cycle monitoring 2/5
+[17:11:57] ✅ Retrieved 87 economic events
+[17:11:57] [17:11:57] Inter-cycle monitoring 3/5
+[17:16:57] ✅ Retrieved 87 economic events
+[17:16:57] [17:16:57] Inter-cycle monitoring 4/5
+[17:21:57] ✅ Retrieved 87 economic events
+[17:21:57] [17:21:57] Inter-cycle monitoring 5/5
+[17:21:57] ✅ Retrieved 87 economic events
+[17:21:58] 
+============================================================
+[17:21:58] CYCLE 2 - 17:21 GMT
+[17:21:58] ============================================================
+[17:21:58] ✅ Retrieved 87 economic events
+[17:21:58] 📊 PHASE 1: Data Collection
+[17:22:00] ✅ Collected data for 27 symbols
+[17:22:00] 🛸 PHASE 2: UFO Analysis
+[17:22:00] ✅ Enhanced UFO analysis completed for 5 timeframes
+[17:22:00] 📅 PHASE 3: Economic Calendar
+[17:22:00] ✅ Retrieved 87 economic events
+[17:22:00] 🔍 PHASE 4: Market Research
+[17:22:22] ✅ Market research completed
+[17:22:22] 💼 PHASE 5: UFO Portfolio Management
+[17:22:22] ✅ Portfolio assessed: 4 open positions
+[17:22:22] 🎯 PHASE 6: Trading Decisions
+[17:22:42] ✅ Trading decisions generated
+[17:22:42] ⚖️ PHASE 7: Risk Assessment
+[17:22:56] ✅ Risk assessment: OK
+[17:22:56] 💰 PHASE 8: Fund Manager Authorization
+[17:23:06] ✅ Fund Manager decision: APPROVED
+[17:23:06] ⚡ PHASE 9: Trade Execution
+[17:23:06] ✅ UFO Engine approved: Additional diversification possible: 4/12 max positions
+[17:23:06] 🔹 Trade closed by LLM: 46921126
+[17:23:06] 🔹 Trade closed by LLM: 46921127
+[17:23:06] 🔹 Trade executed: GBPUSD-ECN BUY 0.4 lots @ 1.34266
+[17:23:07] 🔹 Trade executed: NZDUSD-ECN BUY 0.4 lots @ 0.59459
+[17:23:07] 🔹 Trade executed: USDJPY-ECN SELL 0.4 lots @ 147.37600
+[17:23:07] 🔹 Trade executed: GBPJPY-ECN BUY 0.4 lots @ 197.88321
+[17:23:07] 📋 PHASE 10: Cycle Summary
+[17:23:07] 📊 Cycle 2 Summary (17:21 GMT):
+[17:23:07]    Trades Executed: 6
+[17:23:07]    Total Trades Today: 8
+[17:23:07]    Open Positions: 6/12
+[17:23:07]    Portfolio Value: $508.74 (Total P&L: $-42.05)
+[17:28:07] ✅ Retrieved 87 economic events
+[17:28:07] [17:28:07] Inter-cycle monitoring 1/5
+[17:33:07] ✅ Retrieved 87 economic events
+[17:33:07] [17:33:07] Inter-cycle monitoring 2/5
+[17:38:07] ✅ Retrieved 87 economic events
+[17:38:07] [17:38:07] Inter-cycle monitoring 3/5
+[17:43:07] ✅ Retrieved 87 economic events
+[17:43:07] [17:43:07] Inter-cycle monitoring 4/5
+[17:48:07] ✅ Retrieved 87 economic events
+[17:48:07] [17:48:07] Inter-cycle monitoring 5/5
+[17:48:07] ✅ Retrieved 87 economic events
+[17:48:07] 
+============================================================
+[17:48:07] CYCLE 3 - 17:48 GMT
+[17:48:07] ============================================================
+[17:48:07] ✅ Retrieved 87 economic events
+[17:48:08] 📊 PHASE 1: Data Collection
+[17:48:08] ✅ Collected data for 27 symbols
+[17:48:08] 🛸 PHASE 2: UFO Analysis
+[17:48:08] ✅ Enhanced UFO analysis completed for 5 timeframes
+[17:48:08] 📅 PHASE 3: Economic Calendar
+[17:48:08] ✅ Retrieved 87 economic events
+[17:48:08] 🔍 PHASE 4: Market Research
+[17:48:32] ✅ Market research completed
+[17:48:32] 💼 PHASE 5: UFO Portfolio Management
+[17:48:32] 🚨 UFO PORTFOLIO STOP TRIGGERED: Portfolio stop breached: -15.70% (limit: -9.0%)
+[17:48:32] 🚨 Closing ALL positions - no individual stops needed!
+[17:48:34] 🚨 All positions closed. UFO Portfolio Stop engaged.
+[17:53:03] 
+Trading interrupted by user. Generating final summary...
+[17:53:03] 
+================================================================================
+[17:53:03] 🎯 LIVE UFO TRADING SESSION COMPLETED
+[17:53:03] ================================================================================
+[17:53:03] 📅 Session Date: Thursday, August 07, 2025
+[17:53:03] ⏰ Total Cycles: 3
+[17:53:03] 💼 Total Trades Executed: 8
+[17:53:03] 💰 Final Portfolio Value: $456.73
+[17:53:03] 💰 Total P&L: $-94.06
+[17:53:03] 
+📈 EXECUTED TRADES SUMMARY:
+[17:53:03]   1. GBPUSD-ECN BUY 0.4 @ 1.34313 (UFO Cycle 1)
+[17:53:03]   2. NZDJPY-ECN BUY 0.4 @ 87.59924 (UFO Cycle 1)
+[17:53:03]   3. EURUSD-ECN SELL 0.4 @ 1.16387 (UFO Cycle 1)
+[17:53:03]   4. AUDCHF-ECN SELL 0.4 @ 0.52499 (UFO Cycle 1)
+[17:53:03]   5. GBPUSD-ECN BUY 0.4 @ 1.34266 (UFO Cycle 2)
+[17:53:03]   6. NZDUSD-ECN BUY 0.4 @ 0.59459 (UFO Cycle 2)
+[17:53:03]   7. USDJPY-ECN SELL 0.4 @ 147.37600 (UFO Cycle 2)
+[17:53:03]   8. GBPJPY-ECN BUY 0.4 @ 197.88321 (UFO Cycle 2)
