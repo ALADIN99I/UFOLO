@@ -25,31 +25,14 @@ from src.simulation_ufo_engine import SimulationUFOTradingEngine
 from src.portfolio_manager import PortfolioManager
 from src.dynamic_reinforcement_engine import DynamicReinforcementEngine
 
-class FullDayTradingSimulation:
-    def __init__(self, simulation_date=datetime.datetime(2025, 8, 8)):
-        self.simulation_date = simulation_date
+class LiveUFOTradingSystem:
+    def __init__(self):
         self.config = self.load_config()
-        self.trades_executed = []
-        self.portfolio_value = 10000.0  # Starting balance
-        self.initial_balance = 10000.0
-        self.realized_pnl = 0.0  # Track cumulative realized P&L from closed trades
-        self.simulation_log = []
-        self.cycle_count = 0
-        self.open_positions = []  # Track simulated positions
-        self.closed_trades = []   # Track completed trades
-        
-        # Continuous monitoring variables
-        self.last_position_update = None
-        self.position_update_frequency_minutes = 5  # Update positions every 5 minutes
-        self.continuous_monitoring_enabled = True
-        self.portfolio_history = []  # Track portfolio value over time
-        
-        # Fix config parsing issues
+        self.log_file = self.setup_logging()
+
         self.fix_config_values()
-        
-        # Initialize components
         self.initialize_components()
-        
+
     def load_config(self):
         """Load configuration with error handling"""
         config = configparser.ConfigParser()
@@ -57,6 +40,13 @@ class FullDayTradingSimulation:
         config.read(config_path)
         return config
     
+    def setup_logging(self):
+        """Set up logging for the trading session."""
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+        log_file_path = os.path.join(log_dir, f"live_trading_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+        return log_file_path
+
     def fix_config_values(self):
         """Fix configuration values that have comments or multiple values"""
         # Parse values with inline comments
@@ -139,8 +129,8 @@ class FullDayTradingSimulation:
             trader_agent=self.trader_agent
         )
         
-        # Main UFO Trading Engine
-        self.ufo_engine = SimulationUFOTradingEngine(
+        # Use the live UFOTradingEngine
+        self.ufo_engine = UFOTradingEngine(
             config=self.config,
             mt5_collector=self.mt5_collector,
             ufo_calculator=self.ufo_calculator,
@@ -155,21 +145,60 @@ class FullDayTradingSimulation:
             dynamic_reinforcement_engine=self.dynamic_reinforcement_engine,
             economic_calendar=self.economic_calendar
         )
+    
+    def run(self):
+        """Main loop for the live trading system."""
+        self.log_event("Starting Live UFO Trading System...")
+        
+        try:
+            while True:
+                self.ufo_engine.main_cycle()
+                
+                # Wait for the next cycle
+                cycle_interval = int(self.config.get('trading_params', 'cycle_interval_seconds', 60))
+                self.log_event(f"Cycle finished. Waiting for {cycle_interval} seconds...")
+                time.sleep(cycle_interval)
+
+        except KeyboardInterrupt:
+            self.log_event("Trading system stopped by user.")
+        except Exception as e:
+            self.log_event(f"An unexpected error occurred: {e}", error=True)
+            import traceback
+            self.log_event(traceback.format_exc(), error=True)
+        finally:
+            self.cleanup()
+
+    def log_event(self, message, error=False):
+        """Log events to console and file."""
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_message = f"[{timestamp}] {message}"
+        if error:
+            print(f"\033[91m{log_message}\033[0m")  # Red for errors
+        else:
+            print(log_message)
+        
+        with open(self.log_file, 'a') as f:
+            f.write(log_message + '
+
+    def cleanup(self):
+        """Clean up resources."""
+        self.log_event("Cleaning up resources and shutting down.")
+        self.mt5_collector.disconnect()
 
 def main():
-    """Main function to run the full day simulation"""
-    print("🚀 Starting UFO Forex Agent v3 - FULL DAY SIMULATION")
+    """Main function to run the live trading system"""
+    print("🚀 Starting UFO Forex Agent v3 - Live Trading Mode")
     
     try:
-        # Create and run simulation for the current day
-        simulation = FullDayTradingSimulation(datetime.datetime.now())
-        simulation.run_full_day_simulation()
+        live_system = LiveUFOTradingSystem()
+        live_system.run()
         
     except Exception as e:
-        print(f"💥 Simulation failed with error: {e}")
+        print(f"💥 System failed with error: {e}")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
     main()
+
 
