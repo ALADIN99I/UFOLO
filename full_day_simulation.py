@@ -26,7 +26,7 @@ from src.portfolio_manager import PortfolioManager
 from src.dynamic_reinforcement_engine import DynamicReinforcementEngine
 
 class FullDayTradingSimulation:
-    def __init__(self, simulation_date=datetime.datetime(2025, 8, 8)):
+    def __init__(self, simulation_date=datetime.datetime(2025, 8, 1)):
         self.simulation_date = simulation_date
         self.config = self.load_config()
         self.trades_executed = []
@@ -1419,6 +1419,39 @@ class FullDayTradingSimulation:
                         if current_drawdown < (self.portfolio_equity_stop * 0.8):  # 80% of stop threshold
                             self.log_event(f"⚠️ Approaching portfolio stop: {current_drawdown:.2f}% (threshold: {self.portfolio_equity_stop}%)")
             
+            # Check for multi-timeframe coherence issues
+            if hasattr(self, 'previous_ufo_data') and self.previous_ufo_data:
+                raw_ufo_data = self.previous_ufo_data.get('raw_data', self.previous_ufo_data)
+                coherence_issues = self.check_multi_timeframe_coherence(raw_ufo_data)
+                
+                if coherence_issues:
+                    self.log_event(f"⚠️ Multi-timeframe coherence issues detected for {len(coherence_issues)} currencies")
+                    
+                    # Find and mark positions affected by coherence issues
+                    positions_to_close_coherence = set()  # Use set to avoid duplicates
+                    for issue in coherence_issues:
+                        currency = issue['currency']
+                        
+                        # Find positions involving this currency
+                        for i, position in enumerate(self.open_positions):
+                            symbol = position['symbol'].replace('-ECN', '')
+                            if len(symbol) >= 6:
+                                base_currency = symbol[:3]
+                                quote_currency = symbol[3:6]
+                                
+                                if base_currency == currency or quote_currency == currency:
+                                    if i not in positions_to_close_coherence:  # Only log if not already marked
+                                        positions_to_close_coherence.add(i)
+                                        self.log_event(f"  🚨 {position['symbol']}: Timeframe divergence for {currency} - marking for closure")
+                    
+                    # Close positions affected by coherence issues
+                    for i in sorted(positions_to_close_coherence, reverse=True):  # Sort and reverse for safe removal
+                        if i < len(self.open_positions):  # Safety check
+                            closed_position = self.open_positions.pop(i)
+                            self.realized_pnl += closed_position.get('pnl', 0.0)
+                            self.closed_trades.append(closed_position)
+                            self.log_event(f"  📉 Coherence exit: {closed_position['symbol']} P&L: ${closed_position.get('pnl', 0.0):.2f}")
+            
             # Check for positions with excessive unrealized losses during monitoring
             high_risk_positions = []
             for position in self.open_positions:
@@ -1525,13 +1558,13 @@ class FullDayTradingSimulation:
 def main():
     """Main function to run the full day simulation"""
     print("🚀 Starting UFO Forex Agent v3 - FULL DAY SIMULATION")
-    print("📅 Target Date: Wednesday, August 7th, 2024")
+    print("📅 Target Date: Friday, August 1st, 2025")
     print("🕐 Trading Hours: 0:00 GMT to 18:00 GMT (Every 40 minutes)")
     print("-" * 60)
     
     try:
-        # Create and run simulation for August 7th, 2024
-        simulation = FullDayTradingSimulation(datetime.datetime(2024, 8, 7))
+        # Create and run simulation for August 1st, 2025
+        simulation = FullDayTradingSimulation(datetime.datetime(2025, 8, 1))
         simulation.run_full_day_simulation()
         
         print(f"\n✅ Full day simulation completed successfully!")

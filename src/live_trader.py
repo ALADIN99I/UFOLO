@@ -197,6 +197,11 @@ class LiveTrader:
 
         # For UFO exit signal logic
         self.previous_ufo_data = None
+        
+        # Add simulator-compatible portfolio tracking
+        self.open_positions = []  # Track simulated positions for compatibility
+        self.realized_pnl = 0.0   # Track cumulative realized P&L
+        self.portfolio_value = self.initial_balance  # Current portfolio value
 
     def check_portfolio_equity_stop_simulator_style(self, current_equity):
         """
@@ -211,6 +216,250 @@ class LiveTrader:
             return True, f"Portfolio stop breached: {current_drawdown:.2f}% (limit: {self.portfolio_equity_stop}%)"
 
         return False, f"Portfolio healthy: {current_drawdown:.2f}% drawdown"
+    
+    def get_historical_price_for_time(self, symbol, target_time):
+        """Get real-time price for a specific symbol (live adaptation of simulator function)"""
+        try:
+            # In live trading, we get current price instead of historical
+            # This maintains compatibility with simulator logic
+            if not self.mt5_collector.connect():
+                self.log_event(f"⚠️ Failed to connect to MT5 for {symbol}")
+                return None
+            
+            # Get current tick data
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is not None:
+                # Use bid as the "current" price for consistency
+                return float(tick.bid)
+            else:
+                # Fallback to latest bar data
+                rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 1)
+                if rates is not None and len(rates) > 0:
+                    return float(rates[0]['close'])
+                else:
+                    self.log_event(f"⚠️ No price data available for {symbol}")
+                    return None
+        except Exception as e:
+            self.log_event(f"⚠️ Error getting price for {symbol}: {e}")
+            return None
+    
+    def update_portfolio_value(self, current_time=None, force_update=False):
+        """Update portfolio value based on open positions P&L - SIMULATOR COMPATIBLE"""
+        # Skip update if too recent (unless forced)
+        if not force_update and self.last_position_update:
+            time_since_update = (datetime.utcnow() - self.last_position_update).total_seconds() / 60
+            if time_since_update < self.position_update_frequency_minutes:
+                return
+        
+        try:
+            # Get real positions from MT5
+            open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
+            if open_positions is None or open_positions.empty:
+                # Update portfolio value based on account equity
+                account_info = mt5.account_info()
+                if account_info:
+                    self.portfolio_value = account_info.equity
+                self.last_position_update = current_time or datetime.utcnow()
+                return
+            
+            # Get current market data
+            market_data = self.get_real_time_market_data_for_positions(open_positions)
+            
+            total_unrealized_pnl = 0.0
+            position_updates = []
+            positions_to_close = []
+            
+            # Process each position
+            for _, position in open_positions.iterrows():
+                symbol = position.symbol
+                
+                if symbol in market_data:
+                    # Calculate P&L using simulator logic
+                    current_price = market_data[symbol]['bid'] if position.type == 0 else market_data[symbol]['ask']
+                    pip_multiplier = self.get_pip_value_multiplier(symbol)
+                    price_diff = current_price - position.price_open
+                    if position.type == 1:  # SELL
+                        price_diff = -price_diff
+                    
+                    pnl = price_diff * position.volume * pip_multiplier
+                    total_unrealized_pnl += pnl
+                    
+                    # Track position for potential closure
+                    ticket = position.ticket
+                    
+                    # Update or create P&L tracker
+                    if ticket not in self.position_pnl_tracker:
+                        self.position_pnl_tracker[ticket] = {'peak_pnl': pnl, 'entry_time': position.time}
+                    elif pnl > self.position_pnl_tracker[ticket]['peak_pnl']:
+                        self.position_pnl_tracker[ticket]['peak_pnl'] = pnl
+                    
+                    peak_pnl = self.position_pnl_tracker[ticket]['peak_pnl']
+                    
+                    # Check closing conditions (simulator-style)
+                    close_reason = None
+                    position_age_hours = (datetime.utcnow() - pd.to_datetime(position.time, unit='s')).total_seconds() / 3600
+                    
+                    if pnl > self.take_profit_threshold:
+                        close_reason = f"profit target (P&L: ${pnl:.2f})"
+                    elif pnl < self.stop_loss_threshold_amount:
+                        close_reason = f"stop loss (P&L: ${pnl:.2f})"
+                    elif position_age_hours > self.time_based_exit_hours:
+                        close_reason = f"time-based exit (age: {position_age_hours:.1f} hours)"
+                    elif peak_pnl > self.trailing_stop_activation and pnl < peak_pnl * self.trailing_stop_ratio:
+                        close_reason = f"trailing stop (P&L: ${pnl:.2f} from peak ${peak_pnl:.2f})"
+                    
+                    if close_reason:
+                        positions_to_close.append({
+                            'ticket': ticket,
+                            'symbol': symbol,
+                            'reason': close_reason,
+                            'pnl': pnl
+                        })
+                    
+                    # Track significant movements
+                    if abs(pnl) > 10:
+                        position_updates.append({
+                            'symbol': symbol,
+                            'current_pnl': pnl,
+                            'current_price': current_price
+                        })
+            
+            # Update portfolio value
+            account_info = mt5.account_info()
+            if account_info:
+                self.portfolio_value = account_info.equity
+                self.realized_pnl = account_info.profit  # Track realized P&L
+            
+            # Execute position closures
+            if positions_to_close:
+                self.log_event(f"\n--- Position Management (force_update={force_update}) ---")
+                for closure in positions_to_close:
+                    self.log_event(f"🎯 Closing {closure['symbol']} ({closure['ticket']}): {closure['reason']}")
+                    
+                    # Track closed trade
+                    closed_trade_info = {
+                        'ticket': closure['ticket'],
+                        'symbol': closure['symbol'],
+                        'profit': closure['pnl'],
+                        'close_time': datetime.now(),
+                        'close_reason': closure['reason']
+                    }
+                    self.closed_trades.append(closed_trade_info)
+                    
+                    # Execute closure
+                    self.trade_executor.close_trade(closure['ticket'])
+                    
+                    # Remove from tracker
+                    if closure['ticket'] in self.position_pnl_tracker:
+                        del self.position_pnl_tracker[closure['ticket']]
+            
+            # Log significant portfolio changes
+            if position_updates and len(position_updates) > 0:
+                portfolio_change = total_unrealized_pnl
+                if abs(portfolio_change) > 10:
+                    self.log_event(f"💰 Portfolio update: ${self.portfolio_value:,.2f} (Unrealized P&L: ${total_unrealized_pnl:+.2f})")
+                    for update in position_updates[:3]:  # Log top 3
+                        self.log_event(f"  📊 {update['symbol']}: P&L ${update['current_pnl']:+.2f} @ {update['current_price']:.5f}")
+            
+            # Update tracking
+            self.last_position_update = current_time or datetime.utcnow()
+            
+            # Update portfolio history
+            self.portfolio_history.append({
+                'timestamp': current_time or datetime.utcnow(),
+                'portfolio_value': self.portfolio_value,
+                'unrealized_pnl': total_unrealized_pnl,
+                'realized_pnl': self.realized_pnl,
+                'position_count': len(open_positions)
+            })
+            
+            # Keep only last 10 entries
+            if len(self.portfolio_history) > 10:
+                self.portfolio_history = self.portfolio_history[-10:]
+                
+        except Exception as e:
+            self.log_event(f"❌ Error updating portfolio value: {e}")
+            self.last_position_update = current_time or datetime.utcnow()
+    
+    def simulate_realistic_position_tracking(self, current_time=None):
+        """Create realistic position tracking for live trading with UFO logic"""
+        # In live trading, we get real positions from MT5
+        # But maintain compatibility with simulator interface
+        
+        # First update portfolio values with force_update
+        self.update_portfolio_value(current_time, force_update=True)
+        
+        try:
+            # Get real positions from MT5
+            positions = self.agents['risk_manager'].portfolio_manager.get_positions()
+            
+            if positions is None or positions.empty:
+                return pd.DataFrame()
+            
+            # Check for UFO reinforcement opportunities
+            current_market_data = self.get_real_time_market_data_for_positions(positions)
+            positions_requiring_reinforcement = []
+            
+            for _, position in positions.iterrows():
+                # Convert to simulator format for UFO engine
+                sim_position = {
+                    'ticket': position.ticket,
+                    'symbol': position.symbol,
+                    'direction': 'BUY' if position.type == 0 else 'SELL',
+                    'volume': position.volume,
+                    'entry_price': position.price_open,
+                    'current_price': position.price_current,
+                    'pnl': position.profit,
+                    'timestamp': pd.to_datetime(position.time, unit='s')
+                }
+                
+                # Check if position should be reinforced
+                should_reinforce, reason, reinforcement_plan = self.ufo_engine.should_reinforce_position(
+                    sim_position,
+                    getattr(self, 'previous_ufo_data', None),
+                    current_market_data
+                )
+                
+                if should_reinforce and reinforcement_plan:
+                    positions_requiring_reinforcement.append((sim_position, reinforcement_plan))
+            
+            # Execute reinforcement trades
+            for position, plan in positions_requiring_reinforcement:
+                compensation_type = plan.get('type', 'unknown')
+                additional_lots = plan.get('additional_lots', 0.0)
+                reason = plan.get('reason', 'UFO Reinforcement')
+                
+                if additional_lots > 0:
+                    self.log_event(f"🔧 UFO {compensation_type}: {position['symbol']} - {reason}")
+                    
+                    # Get optimal entry price
+                    optimal_entry_price = self.calculate_ufo_entry_price(
+                        position['symbol'],
+                        position['direction'],
+                        getattr(self, 'previous_ufo_data', None)
+                    )
+                    
+                    if optimal_entry_price:
+                        # Execute reinforcement trade
+                        trade_type = mt5.ORDER_TYPE_BUY if position['direction'] == 'BUY' else mt5.ORDER_TYPE_SELL
+                        success = self.trade_executor.execute_ufo_trade(
+                            symbol=position['symbol'],
+                            trade_type=trade_type,
+                            volume=additional_lots,
+                            comment=f'UFO {compensation_type}'
+                        )
+                        
+                        if success:
+                            self.log_event(f"✅ UFO reinforcement executed: {additional_lots:.2f} lots @ {optimal_entry_price:.5f}")
+                        else:
+                            self.log_event(f"❌ UFO reinforcement failed for {position['symbol']}")
+            
+            # Return positions in simulator-compatible format
+            return positions
+            
+        except Exception as e:
+            self.log_event(f"❌ Error in position tracking: {e}")
+            return pd.DataFrame()
 
     def calculate_dynamic_lot_size(self, symbol, stop_loss_pips=None):
         """
@@ -1579,6 +1828,9 @@ class LiveTrader:
                 return
             self._last_monitoring_time = current_time
             
+            # Force portfolio value update during continuous monitoring - EXACT CLONE from simulator line 1404
+            self.update_portfolio_value(current_time, force_update=True)
+            
             # CRITICAL: Check portfolio stop EVERY monitoring cycle to prevent breach
             portfolio_stop_breached, stop_reason = self.check_portfolio_equity_stop_live()
             if portfolio_stop_breached:
@@ -1586,11 +1838,6 @@ class LiveTrader:
                 self.log_event("🚨 Emergency closing ALL positions immediately!")
                 self.trade_executor.close_all_positions()
                 return  # Exit monitoring
-            
-            # CRITICAL FIX: Apply individual position P&L-based auto-closing rules
-            # This ensures positions are closed when they hit +$75 profit or -$50 loss
-            # just like in the simulator
-            self._manage_open_positions_simulator_style()
             
             # Get account info for portfolio analysis
             account_info = self.mt5_collector.connect() and mt5.account_info()
@@ -1630,6 +1877,65 @@ class LiveTrader:
             open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
             if open_positions is None or open_positions.empty:
                 return
+            
+            # Check for multi-timeframe coherence issues
+            if hasattr(self, 'previous_ufo_data') and self.previous_ufo_data:
+                raw_ufo_data = self.previous_ufo_data.get('raw_data', self.previous_ufo_data)
+                coherence_issues = self.ufo_engine.check_multi_timeframe_coherence(raw_ufo_data)
+                
+                if coherence_issues:
+                    self.log_event(f"⚠️ Multi-timeframe coherence issues detected for {len(coherence_issues)} currencies")
+                    
+                    # Use set to track unique positions to close (avoid duplicates)
+                    positions_to_close = set()
+                    
+                    # Find positions affected by coherence issues
+                    for issue in coherence_issues:
+                        currency = issue['currency']
+                        
+                        # Find positions involving this currency
+                        for _, position in open_positions.iterrows():
+                            symbol = position.symbol.replace('-ECN', '')
+                            if len(symbol) >= 6:
+                                base_currency = symbol[:3]
+                                quote_currency = symbol[3:6]
+                                
+                                if base_currency == currency or quote_currency == currency:
+                                    # Add to set (automatically handles duplicates)
+                                    if position.ticket not in positions_to_close:
+                                        positions_to_close.add(position.ticket)
+                                        self.log_event(f"  🚨 {position.symbol}: Timeframe divergence for {currency} - marking for closure")
+                    
+                    # Close each unique position only once
+                    for ticket in positions_to_close:
+                        # Find the position data
+                        position_data = open_positions[open_positions.ticket == ticket]
+                        if not position_data.empty:
+                            position = position_data.iloc[0]
+                            
+                            # Track closed trade before closing
+                            closed_trade_info = {
+                                'ticket': position.ticket,
+                                'symbol': position.symbol,
+                                'type': position.type,
+                                'volume': position.volume,
+                                'price_open': position.price_open,
+                                'price_close': position.price_current,
+                                'profit': position.profit,
+                                'open_time': position.time,
+                                'close_time': datetime.now(),
+                                'close_reason': f"Multi-timeframe coherence issue"
+                            }
+                            self.closed_trades.append(closed_trade_info)
+                            
+                            # Close the position
+                            self.trade_executor.close_trade(position.ticket)
+                            self.log_event(f"  📉 Coherence exit: {position.symbol} P&L: ${position.profit:.2f}")
+                    
+                    # Re-fetch positions after coherence closures
+                    open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
+                    if open_positions is None or open_positions.empty:
+                        return
             
             # Check for positions with high unrealized losses during monitoring
             high_risk_positions = []
