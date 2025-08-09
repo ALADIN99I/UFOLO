@@ -178,7 +178,7 @@ class LiveUFOTradingSystem:
             print(log_message)
         
         with open(self.log_file, 'a') as f:
-            f.write(log_message + '
+            f.write(log_message + '\n')
 
     def cleanup(self):
         """Clean up resources."""
