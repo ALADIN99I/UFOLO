@@ -369,6 +369,46 @@ class TradeExecutor:
         
         return result
     
+    def execute_ufo_trade_with_tracking(self, symbol, trade_type, volume, comment="UFO Trade"):
+        """
+        Executes a trade using UFO methodology and returns tracking info including ticket.
+        Returns dict with success status and ticket ID for tracking.
+        """
+        # Validate and normalize the symbol
+        validated_symbol = self.pair_validator.validate_and_normalize_pair(symbol)
+        if not validated_symbol:
+            print(f"❌ Invalid currency pair for UFO trade: {symbol}")
+            return {'success': False, 'ticket': None}
+        symbol = validated_symbol  # Use validated symbol
+        
+        if not self.mt5_connection.connect():
+            return {'success': False, 'ticket': None}
+        
+        # Get current market price
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            print(f"Failed to get tick data for {symbol}")
+            self.mt5_connection.disconnect()
+            return {'success': False, 'ticket': None}
+        
+        price = tick.ask if trade_type == mt5.ORDER_TYPE_BUY else tick.bid
+        
+        # Execute trade without fixed stops - managed by UFO analysis
+        result = self.execute_trade(
+            symbol=symbol,
+            trade_type=trade_type,
+            volume=volume,
+            price=price,
+            sl=0,  # No fixed stops
+            tp=0,  # No fixed targets
+            comment=comment
+        )
+        
+        if result and hasattr(result, 'order'):
+            return {'success': True, 'ticket': result.order}
+        else:
+            return {'success': False, 'ticket': None}
+    
     def debug_available_symbols(self, search_pattern=""):
         """
         Debug helper to show available symbols in MT5.

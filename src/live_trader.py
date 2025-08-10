@@ -32,7 +32,7 @@ class LiveTrader:
         self.cycle_count = 0       # Track cycle counter like simulator
         self.simulation_log = []   # Track all events like simulator
         self.previous_ufo_data = None  # Store UFO data for next cycle comparison
-        
+        self.portfolio_history = []  # Portfolio value over time
         self.position_pnl_tracker = {} # To track P&L for trailing stops
         
         # Helper function to parse config values with comments
@@ -50,9 +50,9 @@ class LiveTrader:
         portfolio_stop_raw = self.config['trading'].get('portfolio_equity_stop', '-7.0')
         self.portfolio_equity_stop = parse_config_value(portfolio_stop_raw, -7.0)
         
-        # Read cycle period from config (default 40 minutes if not specified)
-        cycle_period_raw = config['trading'].get('cycle_period_minutes', '40')
-        self.cycle_period_minutes = parse_config_value(cycle_period_raw, 40)
+        # Read cycle period from config (default 30 minutes if not specified)
+        cycle_period_raw = config['trading'].get('cycle_period_minutes', '30')
+        self.cycle_period_minutes = parse_config_value(cycle_period_raw, 30)
         self.cycle_period_seconds = self.cycle_period_minutes * 60
         
         # Continuous monitoring variables - FULLY CONFIG-DRIVEN
@@ -61,7 +61,6 @@ class LiveTrader:
         self.position_update_frequency_minutes = parse_config_value(position_freq_raw, 5)
         self.position_update_frequency_seconds = self.position_update_frequency_minutes * 60
         self.continuous_monitoring_enabled = True
-        self.portfolio_history = []  # Track portfolio value over time
         
         # Priority check frequency from config
         priority_check_raw = config['trading'].get('priority_check_frequency_minutes', '10')
@@ -85,11 +84,11 @@ class LiveTrader:
         min_lot_raw = config['trading'].get('min_lot_size', '0.01')
         self.min_lot_size = parse_config_value(min_lot_raw, 0.01)
         
-        take_profit_raw = config['trading'].get('take_profit_threshold', '75')
-        self.take_profit_threshold = parse_config_value(take_profit_raw, 75)
+        take_profit_raw = config['trading'].get('take_profit_threshold', '7500')
+        self.take_profit_threshold = parse_config_value(take_profit_raw, 7500)
         
-        stop_loss_amount_raw = config['trading'].get('stop_loss_threshold_amount', '-50')
-        self.stop_loss_threshold_amount = parse_config_value(stop_loss_amount_raw, -50)
+        stop_loss_amount_raw = config['trading'].get('stop_loss_threshold_amount', '-5000')
+        self.stop_loss_threshold_amount = parse_config_value(stop_loss_amount_raw, -5000)
         
         time_exit_raw = config['trading'].get('time_based_exit_hours', '4')
         self.time_based_exit_hours = parse_config_value(time_exit_raw, 4)
@@ -195,13 +194,23 @@ class LiveTrader:
         else:
             print(f"⚠️ Dynamic Reinforcement Engine disabled per config.ini (dynamic_reinforcement_enabled = {config_setting})")
 
-        # For UFO exit signal logic
-        self.previous_ufo_data = None
+        # Track all UFO compensations (matching simulator behavior)
+        self.ufo_compensation_positions = []
         
         # Add simulator-compatible portfolio tracking
         self.open_positions = []  # Track simulated positions for compatibility
         self.realized_pnl = 0.0   # Track cumulative realized P&L
         self.portfolio_value = self.initial_balance  # Current portfolio value
+        
+        # Performance optimization: Cache for market data and UFO calculations
+        self._market_data_cache = {}
+        self._market_data_cache_time = None
+        self._cache_expiry_seconds = 30  # Cache market data for 30 seconds
+        
+        # Cache for UFO calculations
+        self._ufo_cache = {}
+        self._ufo_cache_time = None
+        self._ufo_cache_expiry = 60  # Cache UFO data for 60 seconds
 
     def check_portfolio_equity_stop_simulator_style(self, current_equity):
         """
@@ -336,15 +345,25 @@ class LiveTrader:
                 for closure in positions_to_close:
                     self.log_event(f"🎯 Closing {closure['symbol']} ({closure['ticket']}): {closure['reason']}")
                     
-                    # Track closed trade
-                    closed_trade_info = {
-                        'ticket': closure['ticket'],
-                        'symbol': closure['symbol'],
-                        'profit': closure['pnl'],
-                        'close_time': datetime.now(),
-                        'close_reason': closure['reason']
-                    }
-                    self.closed_trades.append(closed_trade_info)
+                    # Update realized P&L when closing position
+                    self.realized_pnl += closure['pnl']
+                    
+                    # Track closed trade with full information
+                    position_data = next((pos for _, pos in open_positions.iterrows() if pos.ticket == closure['ticket']), None)
+                    if position_data is not None:
+                        closed_trade_info = {
+                            'ticket': closure['ticket'],
+                            'symbol': closure['symbol'],
+                            'type': position_data.type,
+                            'volume': position_data.volume,
+                            'price_open': position_data.price_open,
+                            'price_close': market_data[closure['symbol']]['bid'] if position_data.type == 0 else market_data[closure['symbol']]['ask'],
+                            'profit': closure['pnl'],
+                            'open_time': position_data.time,
+                            'close_time': datetime.now(),
+                            'close_reason': closure['reason']
+                        }
+                        self.closed_trades.append(closed_trade_info)
                     
                     # Execute closure
                     self.trade_executor.close_trade(closure['ticket'])
@@ -423,7 +442,7 @@ class LiveTrader:
                 if should_reinforce and reinforcement_plan:
                     positions_requiring_reinforcement.append((sim_position, reinforcement_plan))
             
-            # Execute reinforcement trades
+            # Execute reinforcement trades WITH PROPER TRACKING like simulator
             for position, plan in positions_requiring_reinforcement:
                 compensation_type = plan.get('type', 'unknown')
                 additional_lots = plan.get('additional_lots', 0.0)
@@ -442,15 +461,50 @@ class LiveTrader:
                     if optimal_entry_price:
                         # Execute reinforcement trade
                         trade_type = mt5.ORDER_TYPE_BUY if position['direction'] == 'BUY' else mt5.ORDER_TYPE_SELL
-                        success = self.trade_executor.execute_ufo_trade(
+                        
+                        # Get the new ticket ID from execution
+                        result = self.trade_executor.execute_ufo_trade_with_tracking(
                             symbol=position['symbol'],
                             trade_type=trade_type,
                             volume=additional_lots,
                             comment=f'UFO {compensation_type}'
                         )
                         
-                        if success:
+                        if result and result.get('success'):
+                            # CREATE COMPENSATION POSITION DICT LIKE SIMULATOR
+                            compensation_position = {
+                                'ticket': result.get('ticket', np.random.randint(100000, 999999)),
+                                'symbol': position['symbol'],
+                                'direction': position['direction'],
+                                'volume': additional_lots,
+                                'entry_price': optimal_entry_price,
+                                'current_price': optimal_entry_price,
+                                'pnl': 0.0,
+                                'timestamp': current_time,
+                                'comment': f'UFO {compensation_type}',
+                                'original_position_ticket': position.get('ticket', 0),  # TRACK ORIGINAL
+                                'reinforcement_reason': reason  # STORE REASON
+                            }
+                            
+                            # Add to internal tracking like simulator
+                            self.open_positions.append(compensation_position)
+                            
+                            # Also track in trades_executed for consistency
+                            trade_info = {
+                                'symbol': position['symbol'],
+                                'direction': position['direction'],
+                                'volume': additional_lots,
+                                'entry_price': optimal_entry_price,
+                                'timestamp': current_time,
+                                'comment': f'UFO {compensation_type}',
+                                'original_position_ticket': position.get('ticket', 0),
+                                'reinforcement_reason': reason,
+                                'reinforcement_details': plan
+                            }
+                            self.trades_executed.append(trade_info)
+                            
                             self.log_event(f"✅ UFO reinforcement executed: {additional_lots:.2f} lots @ {optimal_entry_price:.5f}")
+                            self.log_event(f"   → Tracking: Original ticket #{position.get('ticket', 0)}, Reason: {reason}")
                         else:
                             self.log_event(f"❌ UFO reinforcement failed for {position['symbol']}")
             
@@ -835,6 +889,9 @@ class LiveTrader:
                     print(f"🎯 Closing {position.symbol} ({position.ticket}) due to exit signal for {base_currency} or {quote_currency}.")
                     
                     # ADDED: Track closed trade (EXACT CLONE from simulator)
+                    # Update realized P&L when closing due to UFO exit signal
+                    self.realized_pnl += position.profit
+                    
                     closed_trade_info = {
                         'ticket': position.ticket,
                         'symbol': position.symbol,
@@ -923,13 +980,17 @@ class LiveTrader:
                     close_reason = f"trailing stop (P&L dropped to ${pnl:.2f} from peak of ${peak_pnl:.2f})"
 
                 if close_reason:
-                    positions_to_close.append({'ticket': ticket, 'symbol': symbol, 'reason': close_reason})
+                    positions_to_close.append({'ticket': ticket, 'symbol': symbol, 'reason': close_reason, 'pnl': pnl})
 
             # --- Execute Closures ---
             if positions_to_close:
                 print(f"\n--- Simulator-Style Position Management ---")
                 for closure in positions_to_close:
                     print(f"🎯 Closing {closure['symbol']} ({closure['ticket']}): {closure['reason']}")
+                    
+                    # Update realized P&L when closing position
+                    pnl_amount = closure.get('pnl', 0.0)
+                    self.realized_pnl += pnl_amount
                     
                     # ADDED: Track closed trade before closing (EXACT CLONE from simulator)
                     # Get the full position data to save
@@ -943,13 +1004,14 @@ class LiveTrader:
                             'volume': position_data.volume,
                             'price_open': position_data.price_open,
                             'price_close': market_data[closure['symbol']]['bid'] if position_data.type == 0 else market_data[closure['symbol']]['ask'],
-                            'profit': closure.get('pnl', 0.0),  # Use calculated P&L
+                            'profit': pnl_amount,  # Use calculated P&L
                             'open_time': position_data.time,
                             'close_time': datetime.now(),
                             'close_reason': closure['reason']
                         }
                         self.closed_trades.append(closed_trade_info)
                         self.log_event(f"📝 Added to closed trades: {closure['symbol']} P&L: ${closed_trade_info['profit']:.2f}")
+                        self.log_event(f"💰 Realized P&L updated: ${self.realized_pnl:+.2f}")
                     
                     self.trade_executor.close_trade(closure['ticket'])
 
@@ -1049,7 +1111,7 @@ class LiveTrader:
         print("--- End Continuous Monitoring ---\n")
 
     def simulate_single_cycle(self, current_time):
-        """Simulate a single trading cycle - EXACT CLONE from simulator"""
+        """Simulate a single trading cycle - EXACT CLONE from simulator with aligned phases"""
         self.cycle_count += 1
         cycle_time_str = current_time.strftime('%H:%M')
         
@@ -1063,32 +1125,64 @@ class LiveTrader:
             self.log_event(f"⏰ Outside trading hours at {cycle_time_str} GMT - Skipping cycle")
             return True
         
-        # 1. Data Collection
-        self.log_event("📊 PHASE 1: Data Collection")
-        price_data = self.collect_market_data()
+        # ============================================================
+        # PHASE 1: Data Collection - collect_market_data()
+        # ============================================================
+        try:
+            self.log_event("📊 PHASE 1: Data Collection")
+            price_data = self.collect_market_data()
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 1 (Data Collection): {e}")
+            price_data = {}  # Continue with empty data
         
-        # 2. UFO Analysis
-        self.log_event("🛸 PHASE 2: UFO Analysis")
-        ufo_data = self.calculate_ufo_indicators(price_data)
+        # ============================================================
+        # PHASE 2: UFO Analysis - calculate_ufo_indicators()
+        # ============================================================
+        try:
+            self.log_event("🛸 PHASE 2: UFO Analysis")
+            ufo_data = self.calculate_ufo_indicators(price_data)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 2 (UFO Analysis): {e}")
+            ufo_data = None  # Continue without UFO data
         
-        # 3. Economic Calendar
-        self.log_event("📅 PHASE 3: Economic Calendar")
-        economic_events = self.get_economic_events()
+        # ============================================================
+        # PHASE 3: Economic Calendar - get_economic_events()
+        # ============================================================
+        try:
+            self.log_event("📅 PHASE 3: Economic Calendar")
+            economic_events = self.get_economic_events()
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 3 (Economic Calendar): {e}")
+            economic_events = []  # Continue without economic events
         
-        # 4. Market Research
-        self.log_event("🔍 PHASE 4: Market Research")
-        research_result = self.conduct_market_research(ufo_data, economic_events)
+        # ============================================================
+        # PHASE 4: Market Research - conduct_market_research()
+        # ============================================================
+        try:
+            self.log_event("🔍 PHASE 4: Market Research")
+            research_result = self.conduct_market_research(ufo_data, economic_events)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 4 (Market Research): {e}")
+            research_result = "Unable to conduct market research due to error"
         
-        # 5. UFO Portfolio Management (Priority Check)
-        self.log_event("💼 PHASE 5: UFO Portfolio Management")
+        # ============================================================
+        # PHASE 5: UFO Portfolio Management - Priority Checks
+        # Priority Order:
+        #   1. Check portfolio equity stop FIRST
+        #   2. Check session end timing
+        #   3. Analyze UFO exit signals
+        #   4. Store UFO data for next cycle
+        # ============================================================
+        self.log_event("💼 PHASE 5: UFO Portfolio Management (Priority Checks)")
         
-        # UFO METHODOLOGY: Check portfolio-level stop FIRST
-        portfolio_stop_breached, stop_reason = self.check_portfolio_equity_stop_live()
+        # PRIORITY 1: Check portfolio equity stop FIRST
+        self.log_event("  ├─ Priority 1: Checking portfolio equity stop...")
+        portfolio_stop_breached, stop_reason = self.check_portfolio_equity_stop()
         if portfolio_stop_breached:
-            self.log_event(f"🚨 UFO PORTFOLIO STOP TRIGGERED: {stop_reason}")
-            self.log_event("🚨 Closing ALL positions - no individual stops needed!")
+            self.log_event(f"  └─ 🚨 PORTFOLIO STOP TRIGGERED: {stop_reason}")
+            self.log_event("     🚨 Closing ALL positions - portfolio protection engaged!")
             
-            # ADDED: Track all closed trades before closing (EXACT CLONE from simulator)
+            # Track all closed trades before closing
             open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
             if open_positions is not None and not open_positions.empty:
                 for _, position in open_positions.iterrows():
@@ -1107,16 +1201,19 @@ class LiveTrader:
                     self.closed_trades.append(closed_trade_info)
             
             self.trade_executor.close_all_positions()
-            self.log_event("🚨 All positions closed. UFO Portfolio Stop engaged.")
+            self.log_event("     All positions closed. UFO Portfolio Stop engaged.")
             return True
+        else:
+            self.log_event(f"  └─ ✅ Portfolio healthy: {stop_reason}")
         
-        # UFO: Check session end timing (with actual economic events)
+        # PRIORITY 2: Check session end timing with economic events
+        self.log_event("  ├─ Priority 2: Checking session end timing...")
         should_close, close_reason = self.ufo_engine.should_close_for_session_end(economic_events)
         if should_close:
-            self.log_event(f"🌅 UFO SESSION END: {close_reason}")
-            self.log_event("🌅 Closing all positions for session end")
+            self.log_event(f"  └─ 🌅 SESSION END: {close_reason}")
+            self.log_event("     🌅 Closing all positions for session end")
             
-            # ADDED: Track all closed trades before closing for session end
+            # Track all closed trades before closing for session end
             open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
             if open_positions is not None and not open_positions.empty:
                 for _, position in open_positions.iterrows():
@@ -1136,46 +1233,88 @@ class LiveTrader:
             
             self.trade_executor.close_all_positions()
             return True
+        else:
+            self.log_event("  └─ ✅ Session continues")
         
-        # UFO: Analyze exit signals based on currency strength changes
+        # PRIORITY 3: Analyze UFO exit signals
+        self.log_event("  ├─ Priority 3: Analyzing UFO exit signals...")
+        exit_signals = []
         if self.previous_ufo_data and ufo_data:
             exit_signals = self.analyze_ufo_exit_signals(ufo_data, self.previous_ufo_data)
             if exit_signals:
-                self.log_event(f"📈 UFO Exit Signals detected: {len(exit_signals)} currency changes")
-                for signal in exit_signals:
-                    self.log_event(f"⚠️ {signal['reason']} (change: {signal['change']:.2f})")
+                self.log_event(f"  │  📈 UFO Exit Signals detected: {len(exit_signals)} currency changes")
+                for signal in exit_signals[:3]:  # Show top 3 signals
+                    self.log_event(f"  │  ⚠️ {signal['reason']} (change: {signal['change']:.2f})")
                 
                 # CONFIG-DRIVEN AUTO-CLOSE ON STRONG SIGNALS
                 if len(exit_signals) >= self.ufo_exit_signals_threshold:
-                    self.log_event("🚨 STRONG EXIT SIGNALS detected: Auto-closing positions")
+                    self.log_event(f"  └─ 🚨 STRONG EXIT SIGNALS (>={self.ufo_exit_signals_threshold}): Auto-closing positions")
                     positions_closed = self.close_affected_positions(exit_signals)
-                    self.log_event(f"🚨 Auto-closed {positions_closed} positions based on strong exit signals")
+                    self.log_event(f"     Auto-closed {positions_closed} positions based on strong exit signals")
+                else:
+                    self.log_event(f"  └─ ✅ Exit signals below threshold ({len(exit_signals)}/{self.ufo_exit_signals_threshold})")
+            else:
+                self.log_event("  └─ ✅ No UFO exit signals detected")
+        else:
+            self.log_event("  └─ ℹ️ No previous UFO data for comparison")
         
-        # Store UFO data for next cycle comparison
+        # PRIORITY 4: Store UFO data for next cycle
+        self.log_event("  └─ Priority 4: Storing UFO data for next cycle")
         if ufo_data:
             self.previous_ufo_data = ufo_data
+            self.log_event("     ✅ UFO data stored for next cycle comparison")
         
+        # Assess portfolio after priority checks
         current_positions = self.assess_portfolio(current_time)
         
-        # 6. Trading Decisions
-        self.log_event("🎯 PHASE 6: Trading Decisions")
-        trade_decisions = self.generate_trade_decisions(research_result, current_positions)
+        # ============================================================
+        # PHASE 6: Trading Decisions - generate_trade_decisions()
+        # ============================================================
+        try:
+            self.log_event("🎯 PHASE 6: Trading Decisions")
+            trade_decisions = self.generate_trade_decisions(research_result, current_positions)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 6 (Trading Decisions): {e}")
+            trade_decisions = "No trades recommended due to error"
         
-        # 7. Risk Assessment
-        self.log_event("⚖️ PHASE 7: Risk Assessment")
-        risk_assessment = self.assess_risk(trade_decisions)
+        # ============================================================
+        # PHASE 7: Risk Assessment - assess_risk()
+        # ============================================================
+        try:
+            self.log_event("⚖️ PHASE 7: Risk Assessment")
+            risk_assessment = self.assess_risk(trade_decisions)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 7 (Risk Assessment): {e}")
+            risk_assessment = {"risk_score": 10, "recommendation": "Block all trades due to error"}
         
-        # 8. Fund Manager Authorization
-        self.log_event("💰 PHASE 8: Fund Manager Authorization")
-        authorization = self.get_fund_authorization(trade_decisions, risk_assessment)
+        # ============================================================
+        # PHASE 8: Fund Manager Authorization - get_fund_authorization()
+        # ============================================================
+        try:
+            self.log_event("💰 PHASE 8: Fund Manager Authorization")
+            authorization = self.get_fund_authorization(trade_decisions, risk_assessment)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 8 (Fund Authorization): {e}")
+            authorization = "Rejected due to error"
         
-        # 9. Trade Execution
-        self.log_event("⚡ PHASE 9: Trade Execution")
-        executed_trades = self.execute_approved_trades_live(authorization, trade_decisions, current_positions, ufo_data, current_time)
+        # ============================================================
+        # PHASE 9: Trade Execution - execute_approved_trades()
+        # ============================================================
+        try:
+            self.log_event("⚡ PHASE 9: Trade Execution")
+            executed_trades = self.execute_approved_trades_live(authorization, trade_decisions, current_positions, ufo_data, current_time)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 9 (Trade Execution): {e}")
+            executed_trades = 0
         
-        # 10. Cycle Summary
-        self.log_event("📋 PHASE 10: Cycle Summary")
-        self.generate_cycle_summary(cycle_time_str, executed_trades)
+        # ============================================================
+        # PHASE 10: Cycle Summary - generate_cycle_summary()
+        # ============================================================
+        try:
+            self.log_event("📋 PHASE 10: Cycle Summary")
+            self.generate_cycle_summary(cycle_time_str, executed_trades)
+        except Exception as e:
+            self.log_event(f"❌ Error in Phase 10 (Cycle Summary): {e}")
         
         return True
     
@@ -1290,9 +1429,19 @@ class LiveTrader:
             return None
     
     def calculate_ufo_indicators(self, price_data):
-        """Calculate UFO indicators with enhanced analysis - EXACT CLONE from simulator"""
+        """Calculate UFO indicators with enhanced analysis - EXACT CLONE from simulator with caching"""
         if not price_data:
             return None
+        
+        # Performance optimization: Check UFO cache
+        if hasattr(self, '_ufo_cache') and self._ufo_cache_time:
+            cache_age = (datetime.now() - self._ufo_cache_time).total_seconds()
+            if cache_age < self._ufo_cache_expiry:
+                # Create cache key from price data symbols
+                cache_key = tuple(sorted(price_data.keys()))
+                if cache_key in self._ufo_cache:
+                    self.log_event("✅ Using cached UFO data (cache age: {:.1f}s)".format(cache_age))
+                    return self._ufo_cache[cache_key]
             
         try:
             # Reshape the data for the UfoCalculator
@@ -1326,6 +1475,13 @@ class LiveTrader:
             
             # Log enhanced analysis results
             self._log_enhanced_analysis(oscillation_analysis, uncertainty_metrics, coherence_analysis)
+            
+            # Cache the UFO data for performance
+            cache_key = tuple(sorted(price_data.keys()))
+            if not hasattr(self, '_ufo_cache'):
+                self._ufo_cache = {}
+            self._ufo_cache[cache_key] = enhanced_ufo_data
+            self._ufo_cache_time = datetime.now()
             
             self.log_event(f"✅ Enhanced UFO analysis completed for {len(ufo_data)} timeframes")
             return enhanced_ufo_data
@@ -1363,30 +1519,39 @@ class LiveTrader:
             self.log_event(f"❌ Market research error: {e}")
             return {'consensus': 'Market research error', 'analysis': 'Error occurred'}
     
-    def check_portfolio_equity_stop_live(self):
-        """Check if portfolio-level stop loss is breached (UFO methodology) - LIVE VERSION"""
+    def check_portfolio_equity_stop(self):
+        """Check if portfolio-level stop loss is breached - MATCHING SIMULATOR EXACTLY"""
+        if self.initial_balance <= 0:
+            return False, "Invalid initial balance"
+        
+        # Get current portfolio value (equity) from MT5
         try:
             account_info = self.mt5_collector.connect() and mt5.account_info()
             if not account_info:
                 return False, "Could not get account info"
-                
-            if self.initial_balance <= 0:
-                return False, "Invalid initial balance"
-                
-            current_drawdown = ((account_info.equity - self.initial_balance) / self.initial_balance) * 100
             
-            if current_drawdown <= self.portfolio_equity_stop:
-                return True, f"Portfolio stop breached: {current_drawdown:.2f}% (limit: {self.portfolio_equity_stop}%)"
-            
-            return False, f"Portfolio healthy: {current_drawdown:.2f}% drawdown"
+            self.portfolio_value = account_info.equity  # Update portfolio value
         except Exception as e:
-            self.log_event(f"❌ Error checking portfolio stop: {e}")
+            self.log_event(f"❌ Error getting account info: {e}")
             return False, "Error checking portfolio"
+        
+        # Calculate drawdown exactly as in simulator
+        current_drawdown = ((self.portfolio_value - self.initial_balance) / self.initial_balance) * 100
+        
+        if current_drawdown <= self.portfolio_equity_stop:
+            return True, f"Portfolio stop breached: {current_drawdown:.2f}%"
+        
+        return False, f"Portfolio healthy: {current_drawdown:.2f}%"
+    
+    def check_portfolio_equity_stop_live(self):
+        """Wrapper for backward compatibility - calls main check_portfolio_equity_stop()"""
+        return self.check_portfolio_equity_stop()
     
     def assess_portfolio(self, current_time=None):
-        """Assess current portfolio positions - EXACT CLONE from simulator"""
+        """Assess current portfolio positions - FIXED TO MATCH SIMULATOR"""
         try:
-            positions = self.agents['risk_manager'].portfolio_manager.get_positions()
+            # Use our realistic position tracking WITH UFO COMPENSATION like simulator
+            positions = self.simulate_realistic_position_tracking(current_time)
             position_count = len(positions) if positions is not None and not positions.empty else 0
             self.log_event(f"✅ Portfolio assessed: {position_count} open positions")
             return positions
@@ -1437,7 +1602,7 @@ class LiveTrader:
             return "REJECT: Authorization error"
     
     def generate_cycle_summary(self, cycle_time, executed_trades):
-        """Generate summary for this cycle - EXACT CLONE from simulator"""
+        """Generate summary for this cycle - Enhanced with comprehensive reporting"""
         try:
             account_info = self.mt5_collector.connect() and mt5.account_info()
             current_equity = account_info.equity if account_info else self.initial_balance
@@ -1445,11 +1610,28 @@ class LiveTrader:
             position_count = len(open_positions) if open_positions is not None and not open_positions.empty else 0
             total_pnl = current_equity - self.initial_balance
             
-            self.log_event(f"📊 Cycle {self.cycle_count} Summary ({cycle_time} GMT):")
+            # Main cycle summary (matching simulator)
+            self.log_event(f"📊 Cycle {self.cycle_count} Summary ({cycle_time}):")
             self.log_event(f"   Trades Executed: {executed_trades}")
+            self.log_event(f"   Open Positions: {len(self.open_positions)}")
+            self.log_event(f"   Realized P&L: ${self.realized_pnl:+,.2f}")
+            self.log_event(f"   Portfolio Value: ${self.portfolio_value:,.2f}")
+            
+            # Additional live trading details
             self.log_event(f"   Total Trades Today: {len(self.trades_executed)}")
-            self.log_event(f"   Open Positions: {position_count}/{self.ufo_engine.max_concurrent_positions}")
-            self.log_event(f"   Portfolio Value: ${current_equity:,.2f} (Total P&L: ${total_pnl:+,.2f})")
+            self.log_event(f"   Open Positions (MT5): {position_count}/{self.ufo_engine.max_concurrent_positions}")
+            self.log_event(f"   Total P&L: ${total_pnl:+,.2f}")
+            
+            # Update portfolio history for tracking
+            self.portfolio_history.append({
+                'cycle': self.cycle_count,
+                'timestamp': datetime.now(),
+                'portfolio_value': self.portfolio_value,
+                'realized_pnl': self.realized_pnl,
+                'open_positions': len(self.open_positions),
+                'trades_executed': executed_trades
+            })
+            
         except Exception as e:
             self.log_event(f"❌ Error generating cycle summary: {e}")
     
@@ -1687,30 +1869,40 @@ class LiveTrader:
                     continue
                 
                 # EXACT CLONE: Perform additional position updates between cycles
-                next_cycle_time = current_time
-                monitoring_intervals = self.cycle_period_minutes // (self.position_update_frequency_seconds // 60)
+                next_cycle_time = current_time + timedelta(minutes=self.cycle_period_minutes)
+                monitoring_time = current_time + timedelta(minutes=self.position_update_frequency_minutes)
                 
-                for i in range(monitoring_intervals - 1):  # -1 because we already did one monitoring
-                    time.sleep(self.position_update_frequency_seconds)
+                # Enhanced monitoring loop between cycles
+                while monitoring_time < next_cycle_time:
+                    # Calculate time to sleep until next monitoring
+                    time_to_monitor = (monitoring_time - datetime.now()).total_seconds()
+                    if time_to_monitor > 0:
+                        time.sleep(time_to_monitor)
                     
                     # Check if we should stop trading
                     current_monitoring_time = datetime.now()
                     if not self.check_session_status(current_monitoring_time):
                         break
-                        
+                    
+                    # Only monitor if we have open positions
                     if self.continuous_monitoring_enabled:
-                        self.log_event(f"[{current_monitoring_time.strftime('%H:%M:%S')}] Inter-cycle monitoring {i+1}/{monitoring_intervals-1}")
-                        self.continuous_position_monitoring(current_monitoring_time)
+                        open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
+                        if open_positions is not None and not open_positions.empty:
+                            self.log_event(f"[{current_monitoring_time.strftime('%H:%M:%S')}] Continuous monitoring (next cycle at {next_cycle_time.strftime('%H:%M:%S')})")
+                            self.continuous_position_monitoring(current_monitoring_time)
+                    
+                    # Update monitoring time for next iteration
+                    monitoring_time += timedelta(minutes=self.position_update_frequency_minutes)
                 
-                # Wait for remainder of cycle period
-                remaining_sleep = self.cycle_period_seconds - (monitoring_intervals * self.position_update_frequency_seconds)
-                if remaining_sleep > 0:
-                    time.sleep(remaining_sleep)
+                # Wait for remainder of cycle period if needed
+                remaining_time = (next_cycle_time - datetime.now()).total_seconds()
+                if remaining_time > 0:
+                    time.sleep(remaining_time)
                 
             except KeyboardInterrupt:
                 self.log_event("\nTrading interrupted by user. Generating final summary...")
                 self.generate_final_summary()
-                self.mt5_collector.disconnect()
+                self.cleanup_connections()  # Use cleanup method instead of direct disconnect
                 break
             except Exception as e:
                 self.log_event(f"❌❌❌ An unexpected error occurred in the main loop: {e}")
@@ -1720,7 +1912,7 @@ class LiveTrader:
                 time.sleep(60)
     
     def generate_final_summary(self):
-        """Generate final summary when trading ends - EXACT CLONE from simulator"""
+        """Generate comprehensive final summary when trading ends - Enhanced version"""
         try:
             account_info = self.mt5_collector.connect() and mt5.account_info()
             current_equity = account_info.equity if account_info else self.initial_balance
@@ -1730,37 +1922,178 @@ class LiveTrader:
             self.log_event("🎯 LIVE UFO TRADING SESSION COMPLETED")
             self.log_event("="*80)
             self.log_event(f"📅 Session Date: {datetime.now().strftime('%A, %B %d, %Y')}")
-            self.log_event(f"⏰ Total Cycles: {self.cycle_count}")
+            self.log_event(f"⏰ Total Cycles Run: {self.cycle_count}")
             self.log_event(f"💼 Total Trades Executed: {len(self.trades_executed)}")
-            self.log_event(f"💰 Final Portfolio Value: ${current_equity:,.2f}")
-            self.log_event(f"💰 Total P&L: ${total_pnl:+,.2f}")
+            self.log_event(f"💰 Final Portfolio Value: ${self.portfolio_value:,.2f}")
+            self.log_event(f"💹 Realized P&L: ${self.realized_pnl:+,.2f}")
+            self.log_event(f"📈 Total P&L: ${total_pnl:+,.2f}")
             
-            if self.trades_executed:
-                self.log_event("\n📈 EXECUTED TRADES SUMMARY:")
-                for i, trade in enumerate(self.trades_executed, 1):
-                    self.log_event(f"  {i}. {trade['symbol']} {trade['direction']} {trade['volume']} @ {trade['entry_price']:.5f} ({trade['comment']})")
+            # Add performance metrics
+            if self.initial_balance > 0:
+                return_pct = (total_pnl / self.initial_balance) * 100
+                self.log_event(f"📊 Return on Investment: {return_pct:+.2f}%")
             
-            # Save trading log to file
-            log_filename = f"live_trading_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            with open(log_filename, 'w', encoding='utf-8') as f:
-                f.write("UFO FOREX AGENT v3 - LIVE TRADING LOG\n")
-                f.write("=" * 60 + "\n")
-                f.write(f"Session: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Total Cycles: {self.cycle_count}\n\n")
+            # Summary of closed trades
+            if self.closed_trades:
+                self.log_event(f"\n🔒 CLOSED TRADES: {len(self.closed_trades)} positions closed")
+                profitable_trades = sum(1 for t in self.closed_trades if t.get('profit', 0) > 0)
+                losing_trades = sum(1 for t in self.closed_trades if t.get('profit', 0) < 0)
+                if len(self.closed_trades) > 0:
+                    win_rate = (profitable_trades / len(self.closed_trades)) * 100
+                    self.log_event(f"   Win Rate: {win_rate:.1f}% ({profitable_trades} wins / {losing_trades} losses)")
                 
-                for log_entry in self.simulation_log:
-                    f.write(log_entry + "\n")
+                # Best and worst trades
+                if self.closed_trades:
+                    best_trade = max(self.closed_trades, key=lambda x: x.get('profit', 0))
+                    worst_trade = min(self.closed_trades, key=lambda x: x.get('profit', 0))
+                    self.log_event(f"   Best Trade: {best_trade['symbol']} P&L: ${best_trade['profit']:+,.2f}")
+                    self.log_event(f"   Worst Trade: {worst_trade['symbol']} P&L: ${worst_trade['profit']:+,.2f}")
             
-            self.log_event(f"\n📁 Trading log saved: {log_filename}")
+            # All executed trades list
+            if self.trades_executed:
+                self.log_event("\n📈 ALL EXECUTED TRADES SUMMARY:")
+                for i, trade in enumerate(self.trades_executed, 1):
+                    self.log_event(f"  {i}. {trade['symbol']} {trade['direction']} {trade['volume']:.2f} lots @ {trade.get('entry_price', 0):.5f} ({trade.get('comment', 'UFO Trade')})")
+            
+            # UFO compensations summary
+            if hasattr(self, 'ufo_compensation_positions') and self.ufo_compensation_positions:
+                self.log_event(f"\n🛸 UFO COMPENSATIONS: {len(self.ufo_compensation_positions)} reinforcements executed")
+            
+            # Save full day report
+            self.save_full_day_report()
             
         except Exception as e:
             self.log_event(f"❌ Error generating final summary: {e}")
+    
+    def save_full_day_report(self):
+        """Save comprehensive trading report with timestamp and configuration"""
+        try:
+            # Generate filename with date
+            report_date = datetime.now().strftime('%Y%m%d')
+            report_filename = f"live_trading_report_{report_date}.txt"
+            
+            with open(report_filename, 'w', encoding='utf-8') as f:
+                # Header
+                f.write("="*80 + "\n")
+                f.write("UFO FOREX AGENT v3 - LIVE TRADING REPORT\n")
+                f.write("="*80 + "\n\n")
+                
+                # Session information
+                f.write("SESSION INFORMATION\n")
+                f.write("-"*40 + "\n")
+                f.write(f"Date: {datetime.now().strftime('%A, %B %d, %Y')}\n")
+                f.write(f"Start Time: {datetime.now().strftime('%H:%M:%S')} GMT\n")
+                f.write(f"Session Hours: {self.session_start_hour:02d}:{self.session_start_minute:02d} - {self.session_end_hour:02d}:{self.session_end_minute:02d} GMT\n")
+                f.write(f"Total Cycles: {self.cycle_count}\n")
+                f.write(f"Cycle Period: {self.cycle_period_minutes} minutes\n\n")
+                
+                # Configuration summary
+                f.write("CONFIGURATION SUMMARY\n")
+                f.write("-"*40 + "\n")
+                f.write(f"Initial Balance: ${self.initial_balance:,.2f}\n")
+                f.write(f"Portfolio Stop Loss: {self.portfolio_equity_stop:.1f}%\n")
+                f.write(f"Max Lot Size: {self.max_lot_size:.2f}\n")
+                f.write(f"Risk per Trade: {self.risk_per_trade_percent:.1f}%\n")
+                f.write(f"Take Profit: ${self.take_profit_threshold:.2f}\n")
+                f.write(f"Stop Loss: ${self.stop_loss_threshold_amount:.2f}\n")
+                f.write(f"Trailing Stop Activation: ${self.trailing_stop_activation:.2f}\n")
+                f.write(f"Dynamic Sizing: {'Enabled' if self.use_dynamic_position_sizing else 'Disabled'}\n")
+                f.write(f"Dynamic Reinforcement: {'Enabled' if self.dynamic_reinforcement_engine.enabled else 'Disabled'}\n\n")
+                
+                # Performance summary
+                account_info = mt5.account_info()
+                current_equity = account_info.equity if account_info else self.initial_balance
+                total_pnl = current_equity - self.initial_balance
+                
+                f.write("PERFORMANCE SUMMARY\n")
+                f.write("-"*40 + "\n")
+                f.write(f"Final Portfolio Value: ${self.portfolio_value:,.2f}\n")
+                f.write(f"Realized P&L: ${self.realized_pnl:+,.2f}\n")
+                f.write(f"Total P&L: ${total_pnl:+,.2f}\n")
+                if self.initial_balance > 0:
+                    return_pct = (total_pnl / self.initial_balance) * 100
+                    f.write(f"Return on Investment: {return_pct:+.2f}%\n")
+                f.write(f"Total Trades Executed: {len(self.trades_executed)}\n")
+                f.write(f"Total Positions Closed: {len(self.closed_trades)}\n\n")
+                
+                # Trade statistics
+                if self.closed_trades:
+                    f.write("TRADE STATISTICS\n")
+                    f.write("-"*40 + "\n")
+                    profitable_trades = sum(1 for t in self.closed_trades if t.get('profit', 0) > 0)
+                    losing_trades = sum(1 for t in self.closed_trades if t.get('profit', 0) < 0)
+                    if len(self.closed_trades) > 0:
+                        win_rate = (profitable_trades / len(self.closed_trades)) * 100
+                        f.write(f"Win Rate: {win_rate:.1f}%\n")
+                        f.write(f"Profitable Trades: {profitable_trades}\n")
+                        f.write(f"Losing Trades: {losing_trades}\n")
+                        
+                        # Calculate average P&L
+                        total_profit = sum(t.get('profit', 0) for t in self.closed_trades if t.get('profit', 0) > 0)
+                        total_loss = sum(t.get('profit', 0) for t in self.closed_trades if t.get('profit', 0) < 0)
+                        avg_profit = total_profit / profitable_trades if profitable_trades > 0 else 0
+                        avg_loss = total_loss / losing_trades if losing_trades > 0 else 0
+                        f.write(f"Average Profit: ${avg_profit:+,.2f}\n")
+                        f.write(f"Average Loss: ${avg_loss:+,.2f}\n")
+                        
+                        # Best and worst trades
+                        best_trade = max(self.closed_trades, key=lambda x: x.get('profit', 0))
+                        worst_trade = min(self.closed_trades, key=lambda x: x.get('profit', 0))
+                        f.write(f"Best Trade: {best_trade['symbol']} - ${best_trade['profit']:+,.2f}\n")
+                        f.write(f"Worst Trade: {worst_trade['symbol']} - ${worst_trade['profit']:+,.2f}\n\n")
+                
+                # All executed trades
+                if self.trades_executed:
+                    f.write("ALL EXECUTED TRADES\n")
+                    f.write("-"*40 + "\n")
+                    for i, trade in enumerate(self.trades_executed, 1):
+                        f.write(f"{i}. {trade['symbol']} {trade['direction']} {trade['volume']:.2f} lots ")
+                        f.write(f"@ {trade.get('entry_price', 0):.5f} ")
+                        f.write(f"({trade.get('comment', 'UFO Trade')})\n")
+                    f.write("\n")
+                
+                # Closed trades details
+                if self.closed_trades:
+                    f.write("CLOSED TRADES DETAILS\n")
+                    f.write("-"*40 + "\n")
+                    for i, trade in enumerate(self.closed_trades, 1):
+                        f.write(f"{i}. {trade['symbol']} ")
+                        f.write(f"{'BUY' if trade['type'] == 0 else 'SELL'} ")
+                        f.write(f"{trade['volume']:.2f} lots | ")
+                        f.write(f"Entry: {trade['price_open']:.5f} | ")
+                        f.write(f"Exit: {trade['price_close']:.5f} | ")
+                        f.write(f"P&L: ${trade['profit']:+,.2f} | ")
+                        f.write(f"Reason: {trade.get('close_reason', 'Manual')}\n")
+                    f.write("\n")
+                
+                # Full event log
+                f.write("="*80 + "\n")
+                f.write("DETAILED EVENT LOG\n")
+                f.write("="*80 + "\n\n")
+                for log_entry in self.simulation_log:
+                    f.write(log_entry + "\n")
+                
+                f.write("\n" + "="*80 + "\n")
+                f.write(f"Report generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} GMT\n")
+                f.write("="*80 + "\n")
+            
+            self.log_event(f"\n📁 Full day report saved: {report_filename}")
+            
+        except Exception as e:
+            self.log_event(f"❌ Error saving full day report: {e}")
 
     def get_real_time_market_data_for_positions(self, open_positions):
         """
-        Collect real-time market data for all open positions
-        This replaces the empty current_market_data = {} with actual price data
+        Collect real-time market data for all open positions with caching for performance.
+        This replaces the empty current_market_data = {} with actual price data.
         """
+        # Performance optimization: Check cache first
+        if hasattr(self, '_market_data_cache') and self._market_data_cache_time:
+            cache_age = (datetime.now() - self._market_data_cache_time).total_seconds()
+            if cache_age < self._cache_expiry_seconds:
+                # Return cached data if still fresh
+                return self._market_data_cache
+        
         current_market_data = {}
         
         if open_positions is None or len(open_positions) == 0:
@@ -1811,13 +2144,17 @@ class LiveTrader:
             self.mt5_collector.disconnect()
             print(f"✅ Collected real-time market data for {len(current_market_data)} symbols")
             
+            # Update cache with new data
+            self._market_data_cache = current_market_data
+            self._market_data_cache_time = datetime.now()
+            
         except Exception as e:
             print(f"❌ Error in market data collection: {e}")
             
         return current_market_data
     
     def continuous_position_monitoring(self, current_time):
-        """Perform continuous position monitoring between trading cycles - EXACT CLONE from simulator"""
+        """Perform continuous position monitoring between trading cycles with enhanced detection"""
         try:
             open_positions = self.agents['risk_manager'].portfolio_manager.get_positions()
             if open_positions is None or open_positions.empty:
@@ -1828,11 +2165,18 @@ class LiveTrader:
                 return
             self._last_monitoring_time = current_time
             
-            # Force portfolio value update during continuous monitoring - EXACT CLONE from simulator line 1404
+            # Force portfolio value update during continuous monitoring
             self.update_portfolio_value(current_time, force_update=True)
             
+            # Track portfolio value for rapid change detection
+            if not hasattr(self, '_monitoring_portfolio_baseline'):
+                account_info = self.mt5_collector.connect() and mt5.account_info()
+                if account_info:
+                    self._monitoring_portfolio_baseline = account_info.equity
+                    self._monitoring_baseline_time = current_time
+            
             # CRITICAL: Check portfolio stop EVERY monitoring cycle to prevent breach
-            portfolio_stop_breached, stop_reason = self.check_portfolio_equity_stop_live()
+            portfolio_stop_breached, stop_reason = self.check_portfolio_equity_stop()
             if portfolio_stop_breached:
                 self.log_event(f"🚨 PORTFOLIO STOP BREACHED DURING MONITORING: {stop_reason}")
                 self.log_event("🚨 Emergency closing ALL positions immediately!")
@@ -1844,20 +2188,33 @@ class LiveTrader:
             if account_info:
                 current_equity = account_info.equity
                 
-                # Check portfolio status like simulator
-                if len(self.portfolio_history) >= 2:
-                    # Check for rapid changes like simulator
-                    previous_equity = getattr(self, '_last_equity', self.initial_balance)
-                    if previous_equity > 0:
-                        rapid_change = abs(current_equity - previous_equity) / previous_equity * 100
-                        if rapid_change > self.rapid_portfolio_change_threshold:  # CONFIG-DRIVEN RAPID CHANGE THRESHOLD
-                            self.log_event(f"⚡ Rapid portfolio change: {rapid_change:.2f}% in {self.position_update_frequency_seconds // 60} min")
-                            
-                            # Check if portfolio stop is approaching - CONFIG-DRIVEN WARNING RATIO
-                            current_drawdown = ((current_equity - self.initial_balance) / self.initial_balance) * 100
-                            if current_drawdown < (self.portfolio_equity_stop * self.portfolio_stop_warning_ratio):
-                                self.log_event(f"⚠️ Approaching portfolio stop: {current_drawdown:.2f}% (threshold: {self.portfolio_equity_stop}%)")
+                # Enhanced rapid change detection over monitoring period
+                if hasattr(self, '_monitoring_portfolio_baseline'):
+                    # Calculate change since monitoring baseline
+                    time_since_baseline = (current_time - self._monitoring_baseline_time).total_seconds() / 60
+                    portfolio_change_pct = abs(current_equity - self._monitoring_portfolio_baseline) / self._monitoring_portfolio_baseline * 100
+                    
+                    # Check if change exceeds threshold (1% default)
+                    if portfolio_change_pct > self.rapid_portfolio_change_threshold:
+                        self.log_event(f"⚡ RAPID PORTFOLIO CHANGE DETECTED: {portfolio_change_pct:.2f}% in {time_since_baseline:.1f} minutes")
+                        self.log_event(f"   Previous: ${self._monitoring_portfolio_baseline:,.2f} → Current: ${current_equity:,.2f}")
+                        
+                        # Reset baseline after alert
+                        self._monitoring_portfolio_baseline = current_equity
+                        self._monitoring_baseline_time = current_time
+                        
+                        # Check if approaching portfolio stop (80% of stop threshold)
+                        current_drawdown = ((current_equity - self.initial_balance) / self.initial_balance) * 100
+                        warning_level = self.portfolio_equity_stop * self.portfolio_stop_warning_ratio
+                        
+                        if current_drawdown < warning_level:
+                            self.log_event(f"⚠️ WARNING: Approaching portfolio stop!")
+                            self.log_event(f"   Current drawdown: {current_drawdown:.2f}%")
+                            self.log_event(f"   Warning level: {warning_level:.2f}%")
+                            self.log_event(f"   Stop level: {self.portfolio_equity_stop:.2f}%")
+                            self.log_event(f"   Distance to stop: {abs(current_drawdown - self.portfolio_equity_stop):.2f}%")
                 
+                # Update last equity for next comparison
                 self._last_equity = current_equity
                 
                 # Update portfolio history like simulator
@@ -1878,13 +2235,39 @@ class LiveTrader:
             if open_positions is None or open_positions.empty:
                 return
             
-            # Check for multi-timeframe coherence issues
+            # Check multi-timeframe coherence
             if hasattr(self, 'previous_ufo_data') and self.previous_ufo_data:
                 raw_ufo_data = self.previous_ufo_data.get('raw_data', self.previous_ufo_data)
+                coherence_analysis = self.previous_ufo_data.get('coherence_analysis', {})
+                
+                # Check for coherence issues using UFO engine
                 coherence_issues = self.ufo_engine.check_multi_timeframe_coherence(raw_ufo_data)
                 
+                # Enhanced coherence reporting
                 if coherence_issues:
-                    self.log_event(f"⚠️ Multi-timeframe coherence issues detected for {len(coherence_issues)} currencies")
+                    self.log_event(f"⚠️ MULTI-TIMEFRAME COHERENCE CHECK:")
+                    self.log_event(f"   Issues detected for {len(coherence_issues)} currencies")
+                    
+                    # Report coherence levels from analysis
+                    strong_coherence = sum(1 for curr_data in coherence_analysis.values() 
+                                         if curr_data.get('coherence_level') == 'strong')
+                    weak_coherence = sum(1 for curr_data in coherence_analysis.values() 
+                                       if curr_data.get('coherence_level') == 'weak')
+                    
+                    if coherence_analysis:
+                        total_currencies = len(coherence_analysis)
+                        self.log_event(f"   Coherence Summary: Strong={strong_coherence}/{total_currencies}, Weak={weak_coherence}/{total_currencies}")
+                else:
+                    # Log positive coherence status periodically
+                    if hasattr(self, '_last_coherence_log_time'):
+                        time_since_log = (current_time - self._last_coherence_log_time).total_seconds() / 60
+                        if time_since_log > 15:  # Log every 15 minutes
+                            self.log_event(f"✅ Multi-timeframe coherence check: All currencies aligned")
+                            self._last_coherence_log_time = current_time
+                    else:
+                        self._last_coherence_log_time = current_time
+                
+                if coherence_issues:
                     
                     # Use set to track unique positions to close (avoid duplicates)
                     positions_to_close = set()
@@ -1937,13 +2320,14 @@ class LiveTrader:
                     if open_positions is None or open_positions.empty:
                         return
             
-            # Check for positions with high unrealized losses during monitoring
+            # Check for high-risk positions (P&L < -$75)
             high_risk_positions = []
+            all_position_pnls = []
             market_data = self.get_real_time_market_data_for_positions(open_positions)
             
             for _, position in open_positions.iterrows():
                 if position.symbol in market_data:
-                    # Calculate current P&L like simulator
+                    # Calculate current P&L
                     current_price = market_data[position.symbol]['bid'] if position.type == 0 else market_data[position.symbol]['ask']
                     pip_multiplier = self.get_pip_value_multiplier(position.symbol)
                     price_diff = current_price - position.price_open
@@ -1951,13 +2335,42 @@ class LiveTrader:
                         price_diff = -price_diff
                     pnl = price_diff * position.volume * pip_multiplier
                     
-                    if pnl < self.high_risk_alert_threshold:  # CONFIG-DRIVEN HIGH RISK THRESHOLD
-                        high_risk_positions.append({'symbol': position.symbol, 'ticket': position.ticket, 'pnl': pnl})
+                    # Track all P&Ls for worst position reporting
+                    all_position_pnls.append({
+                        'symbol': position.symbol,
+                        'ticket': position.ticket,
+                        'pnl': pnl,
+                        'type': 'BUY' if position.type == 0 else 'SELL',
+                        'volume': position.volume,
+                        'entry_price': position.price_open,
+                        'current_price': current_price
+                    })
+                    
+                    # Check if position exceeds high risk threshold (default -$75)
+                    if pnl < self.high_risk_alert_threshold:
+                        high_risk_positions.append({
+                            'symbol': position.symbol,
+                            'ticket': position.ticket,
+                            'pnl': pnl,
+                            'type': 'BUY' if position.type == 0 else 'SELL',
+                            'volume': position.volume
+                        })
             
+            # Alert on high-risk positions
             if high_risk_positions:
-                self.log_event(f"🚨 Monitoring alert: {len(high_risk_positions)} positions with high unrealized losses")
-                for pos in high_risk_positions[:3]:  # Log top 3
-                    self.log_event(f"  ⚠️ {pos['symbol']}: P&L ${pos['pnl']:.2f}")
+                self.log_event(f"🚨 HIGH-RISK ALERT: {len(high_risk_positions)} positions with P&L < ${self.high_risk_alert_threshold:.2f}")
+                for pos in high_risk_positions:
+                    self.log_event(f"  ⚠️ {pos['symbol']} ({pos['type']}, {pos['volume']:.2f} lots): P&L ${pos['pnl']:.2f}")
+            
+            # Log top 3 worst positions regardless of threshold
+            if all_position_pnls:
+                sorted_positions = sorted(all_position_pnls, key=lambda x: x['pnl'])
+                worst_positions = sorted_positions[:3]
+                
+                self.log_event(f"📊 TOP 3 WORST POSITIONS:")
+                for i, pos in enumerate(worst_positions, 1):
+                    price_movement = ((pos['current_price'] - pos['entry_price']) / pos['entry_price']) * 100
+                    self.log_event(f"  {i}. {pos['symbol']}: P&L ${pos['pnl']:.2f} | Price: {pos['entry_price']:.5f} → {pos['current_price']:.5f} ({price_movement:+.2f}%)")
             
             # Enhanced Dynamic Reinforcement monitoring like simulator
             if self.dynamic_reinforcement_engine.enabled and self.dynamic_reinforcement_engine.should_check_reinforcement(current_time):
@@ -2003,23 +2416,175 @@ class LiveTrader:
                             else:
                                 self.log_event(f"  ⏸️ {position['symbol']}: {message}")
                 
-                # ADDED: UFO-based reinforcement check (EXACT CLONE from simulator lines 1468-1478)
-                # This ensures 100% feature parity with the simulator
+                # Enhanced UFO compensation and reinforcement logic (BATCH PROCESSING)
+                # Now matches simulator's behavior exactly (lines 292-338 in full_day_simulation.py)
                 if hasattr(self, 'previous_ufo_data'):
+                    # STEP 1: COLLECT all positions requiring reinforcement (like simulator)
+                    positions_requiring_reinforcement = []
+                    
+                    # STEP 2: IDENTIFY positions needing reinforcement
                     for position in sim_positions_list:
-                        # Check if UFO engine also suggests reinforcement
                         should_reinforce, reason, plan = self.ufo_engine.should_reinforce_position(
                             position, 
                             self.previous_ufo_data,
                             current_market_data
                         )
+                        
+                        # COLLECT instead of immediately processing
                         if should_reinforce and plan:
-                            self.log_event(f"  🛸 UFO reinforcement suggestion: {position['symbol']} - {reason}")
-                            # Note: We log the suggestion but don't execute it separately
-                            # The Dynamic Reinforcement Engine already handles execution
+                            positions_requiring_reinforcement.append({
+                                'position': position,
+                                'plan': plan,
+                                'reason': reason
+                            })
+                    
+                    # STEP 3: LOG the batch summary
+                    if positions_requiring_reinforcement:
+                        self.log_event(f"🛸 UFO Analysis: {len(positions_requiring_reinforcement)} positions require reinforcement")
+                    
+                    # STEP 4: PROCESS the batch (matching simulator lines 308-338)
+                    for reinforcement_data in positions_requiring_reinforcement:
+                        position = reinforcement_data['position']
+                        plan = reinforcement_data['plan']
+                        reason = reinforcement_data['reason']
+                        
+                        # Extract compensation type (matching simulator line 309)
+                        compensation_type = plan.get('type', 'unknown')
+                        additional_lots = plan.get('additional_lots', 0.0)
+                        
+                        # Log with compensation type (matching simulator line 314)
+                        self.log_event(f"🔧 UFO {compensation_type}: {position['symbol']} - {reason}")
+                        
+                        if additional_lots > 0:
+                            # Create compensation position structure (matching simulator lines 324-336)
+                            compensation_position = {
+                                'ticket': None,  # Will be assigned by MT5
+                                'symbol': position['symbol'],
+                                'direction': position['direction'],
+                                'volume': additional_lots,
+                                'entry_price': 0,  # Will be set by execution
+                                'current_price': 0,  # Will be updated
+                                'pnl': 0.0,
+                                'timestamp': current_time,
+                                'comment': f'UFO {compensation_type}',
+                                'original_position_ticket': position.get('ticket', 0),
+                                'reinforcement_reason': reason
+                            }
+                            
+                            # Execute the UFO reinforcement trade with full tracking
+                            success = self.execute_ufo_reinforcement_with_tracking(
+                                compensation_position, 
+                                plan, 
+                                current_time
+                            )
+                            
+                            if success:
+                                self.log_event(f"✅ UFO reinforcement executed: {additional_lots:.2f} lots")
+                            else:
+                                self.log_event(f"❌ Failed to execute UFO reinforcement for {position['symbol']}")
             
         except Exception as e:
             self.log_event(f"❌ Error in continuous position monitoring: {e}")
+    
+    def execute_ufo_reinforcement_with_tracking(self, compensation_position, plan, current_time):
+        """
+        Execute UFO reinforcement with full tracking like simulator.
+        This method ensures complete feature parity with the simulator's compensation tracking.
+        """
+        try:
+            # Determine trade type
+            trade_type = mt5.ORDER_TYPE_BUY if compensation_position['direction'] == 'BUY' else mt5.ORDER_TYPE_SELL
+            
+            # Execute the trade through existing infrastructure
+            success = self.trade_executor.execute_ufo_trade(
+                symbol=compensation_position['symbol'],
+                trade_type=trade_type,
+                volume=compensation_position['volume'],
+                comment=compensation_position['comment']
+            )
+            
+            if success:
+                # Store the compensation position with full tracking
+                # This maintains the relationship with original position
+                if not hasattr(self, 'ufo_compensation_positions'):
+                    self.ufo_compensation_positions = []
+                
+                self.ufo_compensation_positions.append(compensation_position)
+                
+                # Also track in trades_executed for compatibility
+                trade_info = {
+                    'symbol': compensation_position['symbol'],
+                    'direction': compensation_position['direction'],
+                    'volume': compensation_position['volume'],
+                    'entry_price': 0.0,  # Will be filled by MT5
+                    'timestamp': current_time,
+                    'comment': compensation_position['comment'],
+                    'original_position_ticket': compensation_position['original_position_ticket'],
+                    'reinforcement_reason': compensation_position['reinforcement_reason'],
+                    'reinforcement_details': plan
+                }
+                self.trades_executed.append(trade_info)
+                
+                # Record in dynamic reinforcement engine if available
+                if hasattr(self, 'dynamic_reinforcement_engine') and self.dynamic_reinforcement_engine:
+                    # Convert compensation_position to format expected by DRE
+                    position_dict = {
+                        'ticket': compensation_position.get('ticket'),
+                        'symbol': compensation_position['symbol'],
+                        'direction': compensation_position['direction'],
+                        'volume': compensation_position.get('original_volume', compensation_position['volume']),
+                        'entry_price': compensation_position.get('entry_price', 0),
+                        'current_price': compensation_position.get('current_price', 0),
+                        'pnl': compensation_position.get('pnl', 0),
+                        'timestamp': compensation_position.get('timestamp')
+                    }
+                    self.dynamic_reinforcement_engine.record_reinforcement(position_dict, plan)
+                
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.log_event(f"❌ Error executing UFO reinforcement with tracking: {e}")
+            return False
+    
+    def calculate_ufo_entry_price(self, symbol, direction, previous_ufo_data, current_time):
+        """
+        Calculate optimal entry price for UFO compensation
+        (Matching simulator's logic)
+        """
+        try:
+            # Get current market data
+            symbol_info = mt5.symbol_info_tick(symbol)
+            if symbol_info is None:
+                # Fallback to last known price
+                market_data = self.get_real_time_market_data_for_positions(pd.DataFrame([{'symbol': symbol}]))
+                if symbol in market_data:
+                    return market_data[symbol]['ask'] if direction == 'BUY' else market_data[symbol]['bid']
+                return 0.0
+            
+            # Use bid/ask based on direction
+            if direction == 'BUY':
+                base_price = symbol_info.ask
+            else:
+                base_price = symbol_info.bid
+            
+            # Apply UFO optimization if available
+            if previous_ufo_data and symbol in previous_ufo_data:
+                ufo_adjustment = previous_ufo_data[symbol].get('price_adjustment', 0)
+                optimal_price = base_price + ufo_adjustment
+            else:
+                optimal_price = base_price
+            
+            return optimal_price
+            
+        except Exception as e:
+            self.log_event(f"Error calculating UFO entry price: {e}")
+            # Fallback to market price
+            market_data = self.get_real_time_market_data_for_positions(pd.DataFrame([{'symbol': symbol}]))
+            if symbol in market_data:
+                return market_data[symbol]['ask'] if direction == 'BUY' else market_data[symbol]['bid']
+            return 0.0
     
     def execute_dynamic_reinforcement_live(self, position, reinforcement_plan, current_time):
         """Execute dynamic reinforcement trade in LIVE environment - adapted from simulator"""
@@ -2076,3 +2641,43 @@ class LiveTrader:
                     
         except Exception as e:
             print(f"Error checking portfolio status: {e}")
+    
+    def cleanup_connections(self):
+        """
+        Cleanup method to properly shut down all connections and save reports.
+        This ensures a clean shutdown of the system.
+        """
+        try:
+            self.log_event("\n" + "="*60)
+            self.log_event("🔌 SYSTEM SHUTDOWN INITIATED")
+            self.log_event("="*60)
+            
+            # Save final report before disconnecting
+            self.log_event("📁 Saving full day report...")
+            self.save_full_day_report()
+            
+            # Clear all caches
+            if hasattr(self, '_market_data_cache'):
+                self._market_data_cache.clear()
+                self.log_event("✅ Market data cache cleared")
+            
+            if hasattr(self, '_ufo_cache'):
+                self._ufo_cache.clear()
+                self.log_event("✅ UFO cache cleared")
+            
+            # Disconnect MT5
+            if hasattr(self, 'mt5_collector') and self.mt5_collector:
+                try:
+                    self.mt5_collector.disconnect()
+                    self.log_event("✅ MT5 connection closed")
+                except Exception as e:
+                    self.log_event(f"⚠️ Error closing MT5 connection: {e}")
+            
+            # Final log entry
+            self.log_event("✅ System shutdown complete")
+            self.log_event("="*60)
+            
+        except Exception as e:
+            self.log_event(f"❌ Error during cleanup: {e}")
+            import traceback
+            traceback.print_exc()
